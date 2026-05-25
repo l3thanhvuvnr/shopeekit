@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.WindowManager
@@ -38,6 +39,9 @@ object SniperOverlayView {
     fun show(context: Context) {
         if (overlayView != null) return
 
+        // Need SYSTEM_ALERT_WINDOW permission for overlay from non-Service context
+        if (!Settings.canDrawOverlays(context)) return
+
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         val inflater = LayoutInflater.from(context)
@@ -48,7 +52,7 @@ object SniperOverlayView {
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // correct type for non-Service
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT

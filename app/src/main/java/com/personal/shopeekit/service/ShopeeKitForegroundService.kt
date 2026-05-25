@@ -7,10 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.personal.shopeekit.R
 import com.personal.shopeekit.ui.MainActivity
 
@@ -56,7 +58,13 @@ class ShopeeKitForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(statusText))
+        // API 34+ requires explicit foregroundServiceType in startForeground()
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            buildNotification(statusText),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
