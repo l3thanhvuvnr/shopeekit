@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- S letter for ShopeeKit -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C40,30 30,38 30,48 C30,58 40,63 54,66 C68,69 74,72 74,78 C74,84 66,88 54,88 C42,88 34,83 32,76 L26,79 C29,89 40,96 54,96 C70,96 82,88 82,78 C82,68 72,63 58,60 C44,57 38,54 38,48 C38,42 45,38 54,38 C63,38 70,42 72,48 L79,45 C76,37 66,30 54,30 Z" />
+</vector>

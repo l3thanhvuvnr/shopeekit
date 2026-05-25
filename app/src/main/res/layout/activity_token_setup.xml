@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:text="⚙️ Config Shopee Headers"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Setup Guide -->
+        <androidx.cardview.widget.CardView
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="8dp"
+            app:cardBackgroundColor="#FFF3E0">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:text="📋 Setup (1 lần):\n1. PC: npm install -g apk-mitm\n2. apk-mitm shopee.apk → adb install patched.apk\n3. PC: mitmproxy --listen-port 8080\n4. Android WiFi → Proxy → PC:8080\n5. Mở Shopee → copy Cookie từ mitmproxy"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:textColor="@color/text_secondary" />
+        </androidx.cardview.widget.CardView>
+
+        <!-- Cookie -->
+        <TextView android:text="Cookie (từ mitmproxy)"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary" android:textSize="13sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/etCookie"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:gravity="top"
+            android:hint="SPC_EC=...; SPC_U=...; ..."
+            android:inputType="textMultiLine"
+            android:layout_marginBottom="16dp" />
+
+        <!-- User-Agent -->
+        <TextView android:text="User-Agent (optional)"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary" android:textSize="13sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/etUserAgent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Mozilla/5.0 ..."
+            android:inputType="text"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Base URL -->
+        <TextView android:text="Base URL (default: https://shopee.vn)"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary" android:textSize="13sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/etBaseUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://shopee.vn"
+            android:inputType="textUri"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="💾 Lưu Config"
+            android:backgroundTint="@color/shopee_orange" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ShopeeKit</string>
+    <string name="accessibility_service_description">ShopeeKit sử dụng Accessibility Service để tự động click nút lấy voucher Shopee đúng thời điểm.</string>
+</resources>
