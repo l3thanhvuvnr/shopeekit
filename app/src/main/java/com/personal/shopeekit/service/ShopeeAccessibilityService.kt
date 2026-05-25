@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.PixelFormat
-import android.os.Build
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -86,7 +85,6 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val rootNode = rootInActiveWindow ?: return
         val claimNode = findClaimButton(rootNode)
         _claimButtonVisible.value = claimNode != null
-        rootNode.recycle()
 
         // Detect success/fail feedback from Shopee UI
         detectClaimFeedback(event)
@@ -112,7 +110,6 @@ class ShopeeAccessibilityService : AccessibilityService() {
             if (nodes.isNotEmpty()) {
                 val node = nodes.first()
                 if (node.isEnabled && node.isClickable) return node
-                node.recycle()
             }
         }
 
@@ -122,7 +119,6 @@ class ShopeeAccessibilityService : AccessibilityService() {
             if (nodes.isNotEmpty()) {
                 val node = nodes.first()
                 if (node.isEnabled && node.isClickable) return node
-                node.recycle()
             }
         }
 
@@ -136,11 +132,9 @@ class ShopeeAccessibilityService : AccessibilityService() {
     fun performClaimClick(): Boolean {
         val root = rootInActiveWindow ?: return false
         val claimNode = findClaimButton(root)
-        root.recycle()
 
         return if (claimNode != null) {
             val success = claimNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            claimNode.recycle()
             if (success) _lastClickResult.value = ClickResult.Clicked(System.currentTimeMillis())
             success
         } else {
@@ -153,12 +147,13 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * Fallback gesture click at screen center if accessibility node not found.
      */
     private fun performCenterClick(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
-        val display = windowManager?.defaultDisplay ?: return false
-        @Suppress("DEPRECATION")
-        val centerX = display.width / 2f
-        @Suppress("DEPRECATION")
-        val centerY = display.height / 2f
+        val wm = windowManager ?: return false
+        val bounds = android.graphics.Rect()
+        wm.currentWindowMetrics.bounds.let {
+            bounds.set(it)
+        }
+        val centerX = bounds.width() / 2f
+        val centerY = bounds.height() / 2f
 
         val path = Path().apply { moveTo(centerX, centerY) }
         val gesture = GestureDescription.Builder()

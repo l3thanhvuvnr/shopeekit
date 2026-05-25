@@ -24,7 +24,7 @@ abstract class PriceDatabase : RoomDatabase() {
                     PriceDatabase::class.java,
                     "shopeekit_prices.db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { INSTANCE = it }
             }
