@@ -1,9 +1,10 @@
-package com.personal.shopeekit.features.sniper
+package com.personal.shopeekit.core.time
 
+import android.os.Build
 import android.os.Process
 
 /**
- * High-precision timer for voucher snipe.
+ * High-precision timer for the checkout snipe.
  *
  * Strategy:
  *  1. Coarse Thread.sleep() until T - 50ms  → saves CPU/battery
@@ -11,8 +12,8 @@ import android.os.Process
  *
  * Thread priority: THREAD_PRIORITY_URGENT_AUDIO (highest non-root on Android)
  *
- * Key insight: we fire at (T - rttMs - bufferMs) so the HTTP request
- * arrives at Shopee server approximately at T.
+ * Key insight: we fire at (T - rttMs - bufferMs) so the action lands on
+ * Shopee's server approximately at T.
  */
 class SpeculativeScheduler {
 
@@ -51,7 +52,11 @@ class SpeculativeScheduler {
             while (!cancelled && System.nanoTime() < nanoTarget) {
                 // Spin — this is intentional, keeps us on CPU for ~50ms
                 // This is the price we pay for ±2ms precision
-                Thread.onSpinWait() // hint JIT: this is a spin loop
+                // Thread.onSpinWait() is API 33+; on older devices the empty
+                // loop body is an equally valid (if un-hinted) busy-spin.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Thread.onSpinWait() // hint JIT: this is a spin loop
+                }
             }
 
             if (!cancelled) {

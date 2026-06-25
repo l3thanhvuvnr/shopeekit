@@ -1,0 +1,431 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background"
+    android:fitsSystemWindows="true">
+
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/shopee_orange"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationIconTint="@color/text_on_orange"
+        app:title="Checkout Sniper"
+        app:subtitle="Đặt hàng đúng giờ, chọn voucher tốt nhất"
+        app:subtitleTextColor="#CCFFFFFF"
+        app:titleTextColor="@color/text_on_orange" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- AccessibilityService status -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="14dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvAccessibilityStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="⚠️ AccessibilityService chưa bật"
+                        android:textSize="13sp"
+                        android:textColor="@color/status_warning" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEnableAccessibility"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bật"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        app:cornerRadius="8dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Time config card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Giờ đặt hàng"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="4dp">
+
+                        <EditText
+                            android:id="@+id/etHour"
+                            android:layout_width="60dp"
+                            android:layout_height="wrap_content"
+                            android:hint="12"
+                            android:inputType="number"
+                            android:maxLength="2"
+                            android:gravity="center"
+                            android:textSize="22sp"
+                            android:background="@drawable/input_bg"
+                            android:padding="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  :  "
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <EditText
+                            android:id="@+id/etMinute"
+                            android:layout_width="60dp"
+                            android:layout_height="wrap_content"
+                            android:hint="00"
+                            android:inputType="number"
+                            android:maxLength="2"
+                            android:gravity="center"
+                            android:textSize="22sp"
+                            android:background="@drawable/input_bg"
+                            android:padding="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="  :  "
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <EditText
+                            android:id="@+id/etSecond"
+                            android:layout_width="60dp"
+                            android:layout_height="wrap_content"
+                            android:hint="00"
+                            android:inputType="number"
+                            android:maxLength="2"
+                            android:gravity="center"
+                            android:textSize="22sp"
+                            android:background="@drawable/input_bg"
+                            android:padding="8dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnPickDate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="📅 Ngày"
+                            android:textSize="12sp"
+                            android:layout_marginStart="12dp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            app:strokeColor="@color/shopee_orange"
+                            app:cornerRadius="8dp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvSelectedDate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ngày: hôm nay"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Voucher preference card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ưu tiên voucher"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="8dp" />
+
+                    <RadioGroup
+                        android:id="@+id/rgVoucherPreference"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <RadioButton
+                            android:id="@+id/rbAutoBest"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="⭐ Tự động chọn tốt nhất"
+                            android:checked="true"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+
+                        <RadioButton
+                            android:id="@+id/rbMaxDiscount"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="💰 Giảm nhiều nhất (tuyệt đối)"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+
+                        <RadioButton
+                            android:id="@+id/rbMaxCashback"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="🔄 Cashback cao nhất (%)"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+
+                        <RadioButton
+                            android:id="@+id/rbManualCode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="✏️ Nhập mã thủ công"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+                    </RadioGroup>
+
+                    <EditText
+                        android:id="@+id/etManualCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Nhập mã voucher (vd: SHOP25K)"
+                        android:inputType="textCapCharacters"
+                        android:visibility="gone"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/input_bg"
+                        android:padding="12dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Retry timeout card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Retry timeout"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tvRetryTimeout"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="2 phút"
+                            android:textSize="13sp"
+                            android:textColor="@color/shopee_orange"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekRetryTimeout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:max="19"
+                        android:progress="3"
+                        android:layout_marginBottom="4dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="30 giây"
+                            android:textSize="11sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="10 phút"
+                            android:textSize="11sp"
+                            android:textColor="@color/text_hint"
+                            android:gravity="end" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Instruction card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#FFCCBB"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="#FFF8E1">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="14dp"
+                    android:text="📋 Trước khi bắn:\n1. Mở Shopee → Giỏ hàng → tick sản phẩm\n2. Nhấn Mua hàng → điền địa chỉ, vận chuyển, thanh toán\n3. GIỮ NGUYÊN màn hình checkout (chưa đặt hàng)\n4. Quay lại ShopeeKit và nhấn Sẵn sàng"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:lineSpacingExtra="2dp" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Status + countdown card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/tvCheckoutStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="● IDLE"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/status_idle"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvCheckoutCountdown"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--:--:--"
+                        android:textSize="36sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="monospace"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvCheckoutDetail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Arm / Disarm buttons -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnArmCheckout"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="🎯  Sẵn sàng bắn"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:backgroundTint="@color/shopee_orange"
+                android:layout_marginBottom="8dp"
+                app:cornerRadius="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDisarmCheckout"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="⛔ Huỷ"
+                android:visibility="gone"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:strokeColor="@color/status_failed"
+                android:textColor="@color/status_failed"
+                app:cornerRadius="12dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

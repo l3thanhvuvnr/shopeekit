@@ -2,12 +2,27 @@ package com.personal.shopeekit.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.app.NotificationCompat
+import com.personal.shopeekit.R
+import com.personal.shopeekit.core.storage.ShopeeConfig
+import com.personal.shopeekit.features.checkout.HumanBehavior
+import com.personal.shopeekit.features.checkout.PlaceOrderResult
+import com.personal.shopeekit.features.checkout.VoucherPreference
+import com.personal.shopeekit.service.ShopeeUIDiscovery.ShopeeElement
+import com.personal.shopeekit.service.ShopeeUIDiscovery.ShopeeScreen
+import com.personal.shopeekit.ui.ShopeeCookieSyncActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,63 +30,78 @@ import kotlinx.coroutines.flow.StateFlow
  * Accessibility Service for ShopeeKit.
  *
  * Primary role:
- *  1. Monitor Shopee app UI state
- *  2. Find and click the voucher claim button when triggered by SniperEngine
- *  3. Detect claim success/fail from UI feedback
+ *  1. Monitor Shopee app UI state (foreground detection, cookie-sync prompt)
+ *  2. Drive the CheckoutSniper flow: apply best voucher + place order
+ *  3. Detect order success / out-of-stock / payment errors from UI feedback
  *
- * NOTE: AccessibilityService.performAction() generates a valid X-Sap-Ri internally
- * via Shopee's own code path — this is why we use it instead of direct OkHttp for
- * the voucher claim endpoint.
+ * NOTE: AccessibilityService.performAction() drives Shopee's own UI code path,
+ * so each tap goes through Shopee's normal request signing (X-Sap-Ri etc.) —
+ * this is why we automate via the UI instead of calling the API directly.
  */
 class ShopeeAccessibilityService : AccessibilityService() {
 
     companion object {
         const val SHOPEE_PACKAGE = "com.shopee.vn"
+        private const val TAG = "ShopeeAccess"
+        private const val NOTIF_CHANNEL_SYNC = "cookie_sync"
+        private const val NOTIF_ID_SYNC = 9001
 
-        // State exposed to SniperEngine
+        // Foreground state exposed to the UI layer
         private val _isShopeeActive = MutableStateFlow(false)
-        private val _lastClickResult = MutableStateFlow<ClickResult>(ClickResult.None)
-        private val _claimButtonVisible = MutableStateFlow(false)
-
         val isShopeeActive: StateFlow<Boolean> = _isShopeeActive
-        val lastClickResult: StateFlow<ClickResult> = _lastClickResult
-        val claimButtonVisible: StateFlow<Boolean> = _claimButtonVisible
 
         // Service instance reference (set on connect)
         @Volatile private var instance: ShopeeAccessibilityService? = null
 
         fun getInstance(): ShopeeAccessibilityService? = instance
 
+        // ─── CheckoutSniper API ───────────────────────────────────────────────
+
         /**
-         * Trigger the claim click from SniperEngine.
-         * Returns true if click was dispatched.
+         * Apply best voucher on checkout screen.
+         * Uses UIDiscovery multi-strategy to find voucher picker + voucher items.
+         * Returns display name of applied voucher or null.
          */
-        fun triggerClaimClick(): Boolean {
+        fun applyBestVoucher(preference: VoucherPreference): String? {
+            val svc = instance ?: return null
+            return svc.performApplyBestVoucher(preference)
+        }
+
+        /**
+         * Click the "Đặt hàng" button and parse result.
+         */
+        fun clickPlaceOrder(): PlaceOrderResult {
+            val svc = instance ?: return PlaceOrderResult.AccessibilityUnavailable
+            return svc.performPlaceOrder()
+        }
+
+        /**
+         * Check if a recent order was just placed (idempotency check).
+         * Looks for order confirmation text or recent order in order list.
+         */
+        fun hasRecentOrder(): Boolean {
             val svc = instance ?: return false
-            return svc.performClaimClick()
+            return svc.detectRecentOrderCreated()
+        }
+
+        /**
+         * Harmless warm-up activity before fire (anti-fraud). No-op if the
+         * service isn't connected. See [performWarmUpNudge].
+         */
+        fun warmUpNudge() {
+            instance?.performWarmUpNudge()
         }
     }
 
     private var overlayView: android.view.View? = null
     private var windowManager: WindowManager? = null
-
-    // Button resource IDs commonly used by Shopee for voucher claim
-    private val claimButtonIds = listOf(
-        "com.shopee.vn:id/btn_claim",
-        "com.shopee.vn:id/claim_voucher_btn",
-        "com.shopee.vn:id/tv_claim",
-        "com.shopee.vn:id/btn_get_voucher"
-    )
-
-    // Text labels for claim buttons (language-aware fallback)
-    private val claimButtonTexts = listOf(
-        "Lấy voucher", "Nhận", "Lấy", "Claim", "Get"
-    )
+    private var lastSyncNotifMs: Long = 0L   // throttle: show max 1 notif per 30min
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         setupOverlayWindow()
+        createNotificationChannel()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -81,13 +111,8 @@ class ShopeeAccessibilityService : AccessibilityService() {
 
         if (!isShopee) return
 
-        // Check if claim button is currently visible
-        val rootNode = rootInActiveWindow ?: return
-        val claimNode = findClaimButton(rootNode)
-        _claimButtonVisible.value = claimNode != null
-
-        // Detect success/fail feedback from Shopee UI
-        detectClaimFeedback(event)
+        // Auto-sync cookie notification: show when Shopee is foreground and cookie missing/stale
+        maybeShowSyncNotification()
     }
 
     override fun onInterrupt() {
@@ -100,93 +125,264 @@ class ShopeeAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
+    // ─── CheckoutSniper: Voucher Apply ────────────────────────────────────────
+
     /**
-     * Finds the voucher claim button in the current Shopee UI.
+     * Apply best voucher on the current checkout screen.
+     * Steps: open picker → select best → tap Apply
      */
-    private fun findClaimButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Try by resource ID first (faster)
-        for (id in claimButtonIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (nodes.isNotEmpty()) {
-                val node = nodes.first()
-                if (node.isEnabled && node.isClickable) return node
-            }
+    private fun performApplyBestVoucher(preference: VoucherPreference): String? {
+        val root = rootInActiveWindow ?: return null
+
+        // Step 1: Open voucher picker (tap "Chọn Voucher khác" / picker row)
+        val pickerRow = ShopeeUIDiscovery.find(root, ShopeeScreen.CHECKOUT, ShopeeElement.VOUCHER_PICKER_ROW)
+        pickerRow?.let { humanTap(it) }
+        // Wait for the picker sheet to render (RN loads async) instead of a fixed sleep.
+        val updatedRoot = waitForElement(ShopeeScreen.VOUCHER_PICKER, ShopeeElement.APPLY_VOUCHER_BUTTON)
+            ?: rootInActiveWindow ?: return null
+
+        // Step 2: Select best voucher
+        val appliedName = when (preference) {
+            is VoucherPreference.AutoBest -> clickAutoSelectButton(updatedRoot)
+            is VoucherPreference.MaxDiscount -> selectVoucherByMaxDiscount(updatedRoot)
+            is VoucherPreference.MaxCashback -> selectVoucherByMaxCashback(updatedRoot)
+            is VoucherPreference.ManualCode -> applyManualCode(updatedRoot, preference.code)
         }
 
-        // Fallback: find by text
-        for (text in claimButtonTexts) {
-            val nodes = root.findAccessibilityNodeInfosByText(text)
-            if (nodes.isNotEmpty()) {
-                val node = nodes.first()
-                if (node.isEnabled && node.isClickable) return node
-            }
-        }
+        // Step 3: Tap "Áp dụng"
+        val afterSelectRoot = rootInActiveWindow ?: return appliedName
+        val applyBtn = ShopeeUIDiscovery.find(
+            afterSelectRoot, ShopeeScreen.VOUCHER_PICKER, ShopeeElement.APPLY_VOUCHER_BUTTON
+        )
+        applyBtn?.let { humanTap(it) }
 
+        return appliedName
+    }
+
+    /**
+     * Poll the active window until [element] appears on [screen], or [timeoutMs]
+     * elapses. Returns the root that contains it, or null on timeout.
+     * Needed because Shopee's React Native screens render asynchronously, so a
+     * fixed Thread.sleep is both flaky and slow.
+     */
+    private fun waitForElement(
+        screen: ShopeeScreen,
+        element: ShopeeElement,
+        timeoutMs: Long = 800L,
+        stepMs: Long = 50L
+    ): AccessibilityNodeInfo? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val root = rootInActiveWindow
+            if (root != null && ShopeeUIDiscovery.find(root, screen, element, requireClickable = false) != null) {
+                return root
+            }
+            Thread.sleep(stepMs)
+        }
+        return rootInActiveWindow
+    }
+
+    private fun clickAutoSelectButton(root: AccessibilityNodeInfo): String? {
+        val autoBtn = ShopeeUIDiscovery.find(
+            root, ShopeeScreen.VOUCHER_PICKER, ShopeeElement.AUTO_SELECT_VOUCHER
+        )
+        return if (autoBtn != null) {
+            humanTap(autoBtn)
+            "auto-selected"
+        } else {
+            // Fallback: max discount
+            selectVoucherByMaxDiscount(root)
+        }
+    }
+
+    private fun selectVoucherByMaxDiscount(root: AccessibilityNodeInfo): String? {
+        val items = ShopeeUIDiscovery.findAll(root, ShopeeScreen.VOUCHER_LIST, ShopeeElement.VOUCHER_LIST_ITEM)
+        if (items.isEmpty()) return null
+
+        // Parse discount amounts from each item's subtree
+        val best = items.maxByOrNull { extractDiscountAmount(it) } ?: return null
+        humanTap(best)
+        return best.text?.toString() ?: extractDiscountText(best)
+    }
+
+    private fun selectVoucherByMaxCashback(root: AccessibilityNodeInfo): String? {
+        val items = ShopeeUIDiscovery.findAll(root, ShopeeScreen.VOUCHER_LIST, ShopeeElement.VOUCHER_LIST_ITEM)
+        if (items.isEmpty()) return null
+
+        val best = items.maxByOrNull { extractCashbackPercent(it) } ?: return null
+        humanTap(best)
+        return best.text?.toString() ?: extractDiscountText(best)
+    }
+
+    private fun applyManualCode(root: AccessibilityNodeInfo, code: String): String? {
+        // Find voucher code input field
+        val inputNode = traverseForInput(root) ?: return null
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        val args = android.os.Bundle().apply {
+            putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, code)
+        }
+        inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return code
+    }
+
+    /** Extract absolute discount amount (e.g. "Giảm 200.000đ" → 200000) */
+    private fun extractDiscountAmount(node: AccessibilityNodeInfo): Long {
+        val text = extractDiscountText(node) ?: return 0L
+        val cleaned = text.replace("[^0-9]".toRegex(), "")
+        return cleaned.toLongOrNull() ?: 0L
+    }
+
+    /** Extract cashback percent (e.g. "Hoàn 15%" → 15) */
+    private fun extractCashbackPercent(node: AccessibilityNodeInfo): Int {
+        val text = extractDiscountText(node) ?: return 0
+        val match = Regex("""(\d+)%""").find(text)
+        return match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    }
+
+    private fun extractDiscountText(node: AccessibilityNodeInfo): String? {
+        if (node.text != null) return node.text.toString()
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val text = extractDiscountText(child)
+            if (text != null) return text
+        }
         return null
     }
 
-    /**
-     * Perform the claim click. Called by SniperEngine at the precise moment.
-     * Returns true if click was dispatched.
-     */
-    fun performClaimClick(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val claimNode = findClaimButton(root)
-
-        return if (claimNode != null) {
-            val success = claimNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (success) _lastClickResult.value = ClickResult.Clicked(System.currentTimeMillis())
-            success
-        } else {
-            // Fallback: gesture click at center of screen
-            performCenterClick()
+    private fun traverseForInput(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable && node.isEnabled) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = traverseForInput(child)
+            if (result != null) return result
         }
+        return null
+    }
+
+    // ─── CheckoutSniper: Place Order ─────────────────────────────────────────
+
+    private fun performPlaceOrder(): PlaceOrderResult {
+        val root = rootInActiveWindow ?: return PlaceOrderResult.AccessibilityUnavailable
+
+        val placeOrderBtn = ShopeeUIDiscovery.find(
+            root, ShopeeScreen.CHECKOUT, ShopeeElement.PLACE_ORDER_BUTTON
+        ) ?: return PlaceOrderResult.AccessibilityUnavailable
+
+        val clicked = humanTap(placeOrderBtn)
+        if (!clicked) return PlaceOrderResult.AccessibilityUnavailable
+
+        // Wait for UI feedback (toast / dialog)
+        Thread.sleep(500)
+
+        return parseOrderResult()
     }
 
     /**
-     * Fallback gesture click at screen center if accessibility node not found.
+     * Tap a node like a human: a gesture at an off-centre point inside the
+     * node's bounds with a randomised stroke duration. Falls back to
+     * ACTION_CLICK if the node has no usable bounds or gesture dispatch fails.
+     *
+     * Off-centre, variable-duration taps avoid the pixel-perfect, fixed-length
+     * signature that a server-side risk model can flag (see [HumanBehavior]).
      */
-    private fun performCenterClick(): Boolean {
-        val wm = windowManager ?: return false
-        val bounds = android.graphics.Rect()
-        wm.currentWindowMetrics.bounds.let {
-            bounds.set(it)
+    private fun humanTap(node: AccessibilityNodeInfo): Boolean {
+        val bounds = android.graphics.Rect().also { node.getBoundsInScreen(it) }
+        if (bounds.width() <= 0 || bounds.height() <= 0) {
+            return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
-        val centerX = bounds.width() / 2f
-        val centerY = bounds.height() / 2f
-
-        val path = Path().apply { moveTo(centerX, centerY) }
+        val (x, y) = HumanBehavior.tapPointIn(bounds.left, bounds.top, bounds.right, bounds.bottom)
+        val path = Path().apply { moveTo(x, y) }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 1))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, HumanBehavior.tapDurationMs()))
             .build()
-        return dispatchGesture(gesture, null, null)
+        val dispatched = dispatchGesture(gesture, null, null)
+        // If gesture dispatch returned false (e.g. another gesture in flight), fall back.
+        return if (dispatched) true else node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
-    /**
-     * Detect success/fail feedback from Shopee UI after claim attempt.
-     * Looks for toast messages, snackbars, or dialog text.
-     */
-    private fun detectClaimFeedback(event: AccessibilityEvent) {
-        if (event.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+    private fun parseOrderResult(): PlaceOrderResult {
+        val root = rootInActiveWindow ?: return PlaceOrderResult.Unknown("No root")
+        val text = extractAllText(root).lowercase()
 
-        val text = event.text?.joinToString(" ") ?: return
-        when {
-            text.contains("thành công", ignoreCase = true) ||
-            text.contains("đã lấy", ignoreCase = true) ||
-            text.contains("successfully", ignoreCase = true) -> {
-                _lastClickResult.value = ClickResult.Success(System.currentTimeMillis())
-            }
-            text.contains("hết", ignoreCase = true) ||
-            text.contains("đã hết", ignoreCase = true) ||
-            text.contains("out of stock", ignoreCase = true) -> {
-                _lastClickResult.value = ClickResult.OutOfStock(System.currentTimeMillis())
-            }
-            text.contains("lỗi", ignoreCase = true) ||
-            text.contains("thất bại", ignoreCase = true) -> {
-                _lastClickResult.value = ClickResult.Failed(System.currentTimeMillis(), text)
-            }
+        return when {
+            // Success signals
+            text.contains("thành công") || text.contains("đã đặt hàng") ||
+            text.contains("order placed") || text.contains("successfully") ->
+                PlaceOrderResult.Success
+
+            // Voucher not yet valid — retry
+            text.contains("chưa hợp lệ") || text.contains("chưa đến giờ") ||
+            text.contains("not yet available") || text.contains("invalid voucher") ||
+            text.contains("voucher không hợp lệ") ->
+                PlaceOrderResult.VoucherNotYet
+
+            // Out of stock
+            text.contains("hết hàng") || text.contains("sold out") ||
+            text.contains("out of stock") || text.contains("hết voucher") ->
+                PlaceOrderResult.OutOfStock
+
+            // Payment error
+            text.contains("lỗi thanh toán") || text.contains("payment failed") ||
+            text.contains("payment error") ->
+                PlaceOrderResult.PaymentError
+
+            else -> PlaceOrderResult.Unknown(text.take(100))
         }
+    }
+
+    private fun extractAllText(node: AccessibilityNodeInfo): String {
+        val sb = StringBuilder()
+        if (node.text != null) sb.append(node.text).append(" ")
+        if (node.contentDescription != null) sb.append(node.contentDescription).append(" ")
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            sb.append(extractAllText(child))
+        }
+        return sb.toString()
+    }
+
+    // ─── CheckoutSniper: Idempotency Check ───────────────────────────────────
+
+    /**
+     * Detect if an order was recently created (handles network lag edge case).
+     * Looks for order success screen or recent order in "Đơn hàng của tôi".
+     */
+    private fun detectRecentOrderCreated(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val text = extractAllText(root).lowercase()
+
+        // Check current screen for order success indicators
+        return text.contains("đặt hàng thành công") ||
+            text.contains("order placed successfully") ||
+            text.contains("đã đặt hàng") ||
+            text.contains("mã đơn hàng") ||  // "Order code: xxx"
+            text.contains("order id") ||
+            text.contains("order #")
+    }
+
+    // ─── CheckoutSniper: Warm-up (anti-fraud) ────────────────────────────────
+
+    /**
+     * One unit of harmless "I'm looking at the screen" activity, run repeatedly
+     * by CheckoutSniperEngine in the ~2s before fire. Scrolls a scrollable node
+     * a little forward then back so the checkout state is unchanged, but the
+     * session isn't dead-still right up to the millisecond it taps.
+     */
+    private fun performWarmUpNudge() {
+        val root = rootInActiveWindow ?: return
+        val scrollable = findScrollable(root) ?: return
+        scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
+        Thread.sleep(HumanBehavior.tapDurationMs())
+        scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
+    }
+
+    private fun findScrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findScrollable(child)?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -219,12 +415,58 @@ class ShopeeAccessibilityService : AccessibilityService() {
         } catch (e: Exception) { /* ignore */ }
         overlayView = null
     }
-}
 
-sealed class ClickResult {
-    object None : ClickResult()
-    data class Clicked(val timestamp: Long) : ClickResult()
-    data class Success(val timestamp: Long) : ClickResult()
-    data class OutOfStock(val timestamp: Long) : ClickResult()
-    data class Failed(val timestamp: Long, val reason: String) : ClickResult()
+    // ─── Cookie Auto-Sync ─────────────────────────────────────────────────────
+
+    /**
+     * Show a notification prompting user to sync cookie when:
+     *  - Shopee app just came to foreground
+     *  - Cookie is blank OR not refreshed in last 12 hours
+     *  - Last notification was > 30 minutes ago (throttle)
+     */
+    private fun maybeShowSyncNotification() {
+        val now = System.currentTimeMillis()
+        if (now - lastSyncNotifMs < 30 * 60 * 1000L) return // throttle 30min
+
+        val config = ShopeeConfig(this)
+        val cookie = config.getCookieSync()
+        val needsSync = cookie.isBlank()
+
+        if (!needsSync) return // cookie already set, no need to bother user
+
+        lastSyncNotifMs = now
+        Log.i(TAG, "Shopee foreground, cookie missing — showing sync notification")
+
+        val intent = Intent(this, ShopeeCookieSyncActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pi = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_SYNC)
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setContentTitle("ShopeeKit — Đồng bộ tài khoản")
+            .setContentText("Nhấn để đồng bộ session Shopee (cần 1 lần)")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build()
+
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIF_ID_SYNC, notif)
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            NOTIF_CHANNEL_SYNC,
+            "Cookie Sync",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Thông báo đồng bộ session Shopee"
+        }
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(channel)
+    }
 }

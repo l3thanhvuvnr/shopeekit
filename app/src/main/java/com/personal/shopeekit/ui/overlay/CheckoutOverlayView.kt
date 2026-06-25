@@ -11,17 +11,18 @@ import android.view.WindowManager
 import android.widget.TextView
 import com.personal.shopeekit.R
 import com.personal.shopeekit.ShopeeKitApp
-import com.personal.shopeekit.features.sniper.SniperState
-import com.personal.shopeekit.features.sniper.VoucherSniperFeature
+import com.personal.shopeekit.features.checkout.CheckoutSniperFeature
+import com.personal.shopeekit.features.checkout.CheckoutSniperState
 import java.util.concurrent.TimeUnit
 
 /**
- * Floating overlay window showing countdown timer over any app (including Shopee).
+ * Floating overlay window showing the checkout-snipe countdown over any app
+ * (including Shopee's checkout screen, which sets FLAG_SECURE — accessibility
+ * overlays still render fine over it).
  *
- * Uses TYPE_ACCESSIBILITY_OVERLAY — available without root.
- * Pattern from android-setup-guide.md (BVC project).
+ * Uses TYPE_APPLICATION_OVERLAY — available without root (needs SYSTEM_ALERT_WINDOW).
  */
-object SniperOverlayView {
+object CheckoutOverlayView {
 
     private var overlayView: android.view.View? = null
     private var windowManager: WindowManager? = null
@@ -80,17 +81,20 @@ object SniperOverlayView {
 
     private fun updateDisplay() {
         val engine = (ShopeeKitApp.instance.features
-            .filterIsInstance<VoucherSniperFeature>()
+            .filterIsInstance<CheckoutSniperFeature>()
             .firstOrNull())?.engine ?: return
 
         val ms = engine.msUntilRelease()
         val state = engine.state.value
 
         tvStatus?.text = when (state) {
-            is SniperState.Armed -> "🎯"
-            is SniperState.Firing -> "🚀"
-            is SniperState.Success -> "✅"
-            is SniperState.Failed, is SniperState.OutOfStock -> "❌"
+            is CheckoutSniperState.Armed -> "🎯"
+            is CheckoutSniperState.Firing,
+            is CheckoutSniperState.ApplyingVoucher,
+            is CheckoutSniperState.PlacingOrder,
+            is CheckoutSniperState.RetryLoop -> "🚀"
+            is CheckoutSniperState.Success -> "✅"
+            is CheckoutSniperState.Failed, is CheckoutSniperState.OutOfStock -> "❌"
             else -> "⏳"
         }
 

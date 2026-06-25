@@ -1,44 +1,204 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/background">
+    android:background="@color/background"
+    android:fitsSystemWindows="true">
 
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/shopee_orange"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationIconTint="@color/text_on_orange"
+        app:title="Lịch Sử Giá"
+        app:subtitle="Theo dõi &amp; tìm kiếm sản phẩm"
+        app:subtitleTextColor="#CCFFFFFF"
+        app:titleTextColor="@color/text_on_orange" />
+
+    <!-- Segmented Control: Theo dõi / Tìm kiếm -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="center_vertical">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="4dp">
 
-        <TextView
-            android:text="📊 Lịch Sử Giá"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTabTracking"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="40dp"
             android:layout_weight="1"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary" />
+            android:text="📋 Đang theo dõi"
+            android:textSize="13sp"
+            android:backgroundTint="@color/shopee_orange"
+            android:layout_marginEnd="4dp"
+            app:cornerRadius="20dp" />
 
-        <Button
-            android:id="@+id/btnAddProduct"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="+ Thêm"
-            android:backgroundTint="@color/shopee_orange" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTabSearch"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="🔍 Tìm sản phẩm"
+            android:textSize="13sp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:textColor="@color/shopee_orange"
+            app:strokeColor="@color/shopee_orange"
+            android:layout_marginStart="4dp"
+            app:cornerRadius="20dp" />
     </LinearLayout>
 
-    <ScrollView
+    <!-- ── PANEL 1: Danh sách theo dõi ── -->
+    <LinearLayout
+        android:id="@+id/panelTracking"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="visible">
 
-        <LinearLayout
-            android:id="@+id/containerProducts"
+        <!-- Empty state -->
+        <TextView
+            android:id="@+id/tvEmptyTracking"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp" />
-    </ScrollView>
+            android:text="Chưa có sản phẩm nào đang theo dõi.\nNhấn 🔍 Tìm sản phẩm để thêm."
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center"
+            android:padding="40dp"
+            android:visibility="gone" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <LinearLayout
+                android:id="@+id/containerProducts"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="8dp" />
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- ── PANEL 2: Tìm kiếm ── -->
+    <LinearLayout
+        android:id="@+id/panelSearch"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- Search bar -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="8dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/shopee_orange"
+            app:strokeWidth="2dp"
+            app:cardBackgroundColor="@color/surface">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="4dp"
+                android:gravity="center_vertical">
+
+                <EditText
+                    android:id="@+id/etSearchQuery"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:hint="Tìm kiếm trên Shopee..."
+                    android:inputType="text"
+                    android:imeOptions="actionSearch"
+                    android:singleLine="true"
+                    android:background="@null"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="8dp"
+                    android:textSize="15sp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSearch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Tìm"
+                    android:textSize="14sp"
+                    android:backgroundTint="@color/shopee_orange"
+                    app:cornerRadius="8dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Search hint: also add by URL -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Hoặc dán URL Shopee:"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddByUrl"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="🔗 Dán URL"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:strokeColor="@color/card_stroke"
+                android:textColor="@color/text_secondary"
+                app:cornerRadius="16dp" />
+        </LinearLayout>
+
+        <!-- Progress -->
+        <ProgressBar
+            android:id="@+id/progressSearch"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:indeterminate="true"
+            android:progressTint="@color/shopee_orange"
+            android:indeterminateTint="@color/shopee_orange"
+            android:visibility="gone" />
+
+        <!-- Results list -->
+        <ScrollView
+            android:id="@+id/scrollResults"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <LinearLayout
+                android:id="@+id/containerSearchResults"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
+        </ScrollView>
+    </LinearLayout>
 
 </LinearLayout>

@@ -4,11 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import android.widget.LinearLayout
+import android.view.View
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.card.MaterialCardView
 import com.personal.shopeekit.R
 import com.personal.shopeekit.service.ShopeeAccessibilityService
 import com.personal.shopeekit.ui.setup.TokenSetupActivity
@@ -29,26 +30,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupNavigation() {
-        findViewById<Button>(R.id.btnSniper).setOnClickListener {
-            startActivity(Intent(this, SniperSetupActivity::class.java))
+        findViewById<MaterialCardView>(R.id.btnCheckoutSniper).setOnClickListener {
+            startActivity(Intent(this, CheckoutSniperActivity::class.java))
         }
 
-        findViewById<Button>(R.id.btnPriceHistory).setOnClickListener {
+        findViewById<MaterialCardView>(R.id.btnPriceHistory).setOnClickListener {
             startActivity(Intent(this, PriceHistoryActivity::class.java))
         }
 
-        findViewById<Button>(R.id.btnTokenSetup).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnTokenSetup).setOnClickListener {
             startActivity(Intent(this, TokenSetupActivity::class.java))
+        }
+
+        findViewById<View?>(R.id.btnCookieSync)?.setOnClickListener {
+            startActivity(Intent(this, ShopeeCookieSyncActivity::class.java))
         }
     }
 
     private fun checkRequiredPermissions() {
-        // Request battery optimization exemption (MIUI critical)
         if (!isBatteryOptimizationIgnored()) {
             requestIgnoreBatteryOptimization()
         }
 
-        // Request overlay permission
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(
                 this,

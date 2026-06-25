@@ -21,6 +21,8 @@ class ShopeeConfig(private val context: Context) {
         private val KEY_AF_AC = stringPreferencesKey("af_ac")
         private val KEY_SHOPEE_BASE_URL = stringPreferencesKey("shopee_base_url")
 
+        // Default URL = shopee.vn trực tiếp (release).
+        // Debug build override được inject qua BuildConfig.SHOPEE_BASE_URL trong ShopeeHttpClient.
         private const val DEFAULT_BASE_URL = "https://shopee.vn"
         private const val DEFAULT_UA = "Mozilla/5.0 (Linux; Android 16; Xiaomi 15) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"

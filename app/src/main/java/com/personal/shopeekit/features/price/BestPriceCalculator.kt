@@ -9,7 +9,7 @@ import android.content.Context
  * Best Price Formula:
  *   effectivePrice = currentPrice - bestVoucherDiscount
  *
- * In future: can integrate with VoucherSniperFeature to track available vouchers.
+ * In future: can integrate with CheckoutSniper to track available vouchers.
  */
 class BestPriceCalculator(private val context: Context) {
 

@@ -26,7 +26,6 @@ class PricePoller(context: Context, params: WorkerParameters) :
         const val KEY_PRODUCT_ID = "product_id"
         const val KEY_SHOP_ID = "shop_id"
 
-        private const val BASE_URL = "https://shopee.vn"
         private const val PRICE_API_PATH = "/api/v4/pdp/get_pc"
     }
 
@@ -62,7 +61,7 @@ class PricePoller(context: Context, params: WorkerParameters) :
     }
 
     private fun fetchPrice(productId: String, shopId: Long): PriceRecord? {
-        val url = "$BASE_URL$PRICE_API_PATH?item_id=$productId&shop_id=$shopId"
+        val url = "${ShopeeHttpClient.baseUrl}$PRICE_API_PATH?item_id=$productId&shop_id=$shopId"
         val request = ShopeeHttpClient.buildRequest(
             url = url,
             extraHeaders = config.buildAuthHeaders()

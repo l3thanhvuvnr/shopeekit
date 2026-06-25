@@ -2,6 +2,7 @@
 build/
 out/
 .gradle/
+.kotlin/
 .idea/
 *.class
 *.jar
@@ -18,3 +19,7 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Stray UI Automator dumps (mojibake name varies)
+*ui_dump.xml
+*Tempui_dump.xml

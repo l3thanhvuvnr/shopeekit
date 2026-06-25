@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Brand -->
     <color name="shopee_orange">#EE4D2D</color>
+    <color name="shopee_orange_dark">#C93D20</color>
+    <color name="shopee_orange_light">#FF6B4D</color>
+    <color name="shopee_orange_bg">#FFF0ED</color>
+
+    <!-- Surface -->
     <color name="background">#F5F5F5</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#FAFAFA</color>
+
+    <!-- Text -->
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+    <color name="text_on_orange">#FFFFFF</color>
+
+    <!-- Status -->
     <color name="status_idle">#9E9E9E</color>
     <color name="status_scheduled">#2196F3</color>
     <color name="status_armed">#FF9800</color>
@@ -11,4 +25,10 @@
     <color name="status_success">#4CAF50</color>
     <color name="status_failed">#F44336</color>
     <color name="status_warning">#FF9800</color>
+
+    <!-- UI -->
+    <color name="divider">#EEEEEE</color>
+    <color name="card_stroke">#E0E0E0</color>
+    <color name="ripple">#1AEE4D2D</color>
+    <color name="icon_tint">#616161</color>
 </resources>

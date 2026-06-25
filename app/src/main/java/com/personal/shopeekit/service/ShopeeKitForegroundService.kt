@@ -17,10 +17,10 @@ import com.personal.shopeekit.R
 import com.personal.shopeekit.ui.MainActivity
 
 /**
- * ForegroundService that keeps SniperEngine alive during countdown.
- * MIUI kills background processes aggressively — foreground service is mandatory.
+ * ForegroundService that keeps the CheckoutSniper engine alive during countdown.
+ * MIUI kills background processes aggressively — a foreground service is mandatory.
  *
- * Bind to this service from activities to access the SniperEngine.
+ * Bind to this service from activities to keep the process resident.
  */
 class ShopeeKitForegroundService : Service() {
 
