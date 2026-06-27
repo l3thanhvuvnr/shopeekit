@@ -1,6 +1,7 @@
 package com.personal.shopeekit.core.time
 
 import com.personal.shopeekit.core.network.ShopeeHttpClient
+import com.personal.shopeekit.core.logging.KitLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -40,6 +41,7 @@ object RttMeasurer {
         }
 
         _rttMs = if (samples.isEmpty()) 80L else samples.sorted()[samples.size / 2]
+        KitLogger.i("RTT", "measure — median=${_rttMs}ms samples=${samples.size} lead=${speculativeLeadMs()}ms")
         _rttMs
     }
 

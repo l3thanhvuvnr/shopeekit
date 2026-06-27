@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.personal.shopeekit.core.network.ShopeeHttpClient
+import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.storage.ShopeeConfig
 import com.personal.shopeekit.features.price.db.PriceDatabase
 import com.personal.shopeekit.features.price.db.PriceRecord
@@ -47,6 +48,7 @@ class PricePoller(context: Context, params: WorkerParameters) :
             when (fetch) {
                 is FetchResult.Ok -> {
                     val priceData = fetch.record
+                    KitLogger.i("PRC", "poll $productId — price=${priceData.price}₫ name=${priceData.productName.take(30)}")
                     val dao = db.priceDao()
 
                     // Read previous state BEFORE inserting the new row, otherwise
@@ -72,10 +74,17 @@ class PricePoller(context: Context, params: WorkerParameters) :
                     dao.pruneOldRecords(productId, System.currentTimeMillis() - PRUNE_AGE_MS)
                     Result.success()
                 }
-                FetchResult.AuthExpired -> Result.failure() // cookie dead — retry is pointless
-                FetchResult.Transient -> Result.retry()      // 429/5xx/network — back off & retry
+                FetchResult.AuthExpired -> {
+                    KitLogger.e("PRC", "poll $productId — AUTH EXPIRED (401/403), stopping worker")
+                    Result.failure()
+                }
+                FetchResult.Transient -> {
+                    KitLogger.w("PRC", "poll $productId — transient error (429/5xx), retrying later")
+                    Result.retry()
+                }
             }
         } catch (e: Exception) {
+            KitLogger.e("PRC", "poll $productId — exception: ${e.javaClass.simpleName}: ${e.message}", e)
             Result.retry()
         }
     }

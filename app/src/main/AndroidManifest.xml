@@ -56,6 +56,12 @@
             android:name=".ui.PriceHistoryActivity"
             android:exported="false" />
 
+        <!-- Debug Log Viewer -->
+        <activity
+            android:name=".ui.LogViewerActivity"
+            android:exported="false"
+            android:label="Debug Log" />
+
         <!-- Cookie Sync WebView -->
         <activity
             android:name=".ui.ShopeeCookieSyncActivity"

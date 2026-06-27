@@ -1,6 +1,7 @@
 package com.personal.shopeekit.core.time
 
 import com.personal.shopeekit.core.network.ShopeeHttpClient
+import com.personal.shopeekit.core.logging.KitLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -30,7 +31,8 @@ object TimeSync {
 
     @Volatile private var _offsetMs: Long = 0L
     @Volatile private var _lastCalibrated: Long = 0L
-    @Volatile private var _isRefined: Boolean = false  // true = edge-detected (sub-second accuracy)
+    @Volatile private var _isRefined: Boolean = false
+    @Volatile private var _rttApprox: Long = 80L  // updated during edge-detection for logging
 
     val offsetMs: Long get() = _offsetMs
     val isCalibrated: Boolean get() = _lastCalibrated > 0
@@ -50,9 +52,11 @@ object TimeSync {
         if (edgeOffset != null) {
             _offsetMs = edgeOffset
             _isRefined = true
+            KitLogger.i("TSY", "calibrate — edge-detection OK offset=${edgeOffset}ms (±~${_rttApprox/2}ms)")
         } else {
             _offsetMs = medianCalibrate()
             _isRefined = false
+            KitLogger.w("TSY", "calibrate — fallback median offset=${_offsetMs}ms (±500ms, no boundary found)")
         }
         _lastCalibrated = System.currentTimeMillis()
         _offsetMs
@@ -80,6 +84,7 @@ object TimeSync {
                 if (dateHeader != null) {
                     val serverSec = (dateFormat.parse(dateHeader)?.time ?: return@repeat) / 1000L
                     val localMidpoint = (before + after) / 2
+                    _rttApprox = after - before  // track for logging
 
                     if (prevSecond >= 0 && serverSec > prevSecond) {
                         // Boundary detected: server just ticked from prevSecond → serverSec

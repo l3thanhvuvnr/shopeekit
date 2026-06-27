@@ -1,6 +1,7 @@
 package com.personal.shopeekit.features.price
 
 import com.personal.shopeekit.core.network.ShopeeHttpClient
+import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.storage.ShopeeConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,6 +37,7 @@ class ShopeeSearchRepository(private val config: ShopeeConfig) {
     }
 
     suspend fun search(keyword: String): SearchOutcome = withContext(Dispatchers.IO) {
+        KitLogger.d("SCH", "search '$keyword'")
         try {
             val cookie = config.getCookie()
             val csrfToken = Regex("""(?:^|;\s*)csrftoken=([^;]+)""").find(cookie)
@@ -56,9 +58,17 @@ class ShopeeSearchRepository(private val config: ShopeeConfig) {
                 val body = response.body?.string()
                     ?: return@withContext SearchOutcome.Error("Lỗi mạng (HTTP $code, body trống)")
 
-                parseOutcome(body, code, contentType)
+                parseOutcome(body, code, contentType).also { outcome ->
+                    when (outcome) {
+                        is SearchOutcome.Success -> KitLogger.i("SCH", "search '$keyword' → ${outcome.results.size} results (HTTP $code)")
+                        is SearchOutcome.Empty   -> KitLogger.i("SCH", "search '$keyword' → empty (HTTP $code)")
+                        is SearchOutcome.AuthError -> KitLogger.e("SCH", "search '$keyword' → AUTH ERROR: ${outcome.message}")
+                        is SearchOutcome.Error   -> KitLogger.w("SCH", "search '$keyword' → error: ${outcome.message}")
+                    }
+                }
             }
         } catch (e: Exception) {
+            KitLogger.e("SCH", "search exception: ${e.message}", e)
             SearchOutcome.Error("Lỗi kết nối: ${e.message}")
         }
     }

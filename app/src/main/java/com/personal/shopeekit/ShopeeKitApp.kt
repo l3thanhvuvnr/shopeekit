@@ -1,6 +1,7 @@
 package com.personal.shopeekit
 
 import android.app.Application
+import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.network.ShopeeHttpClient
 import com.personal.shopeekit.features.checkout.CheckoutSniperFeature
 import com.personal.shopeekit.features.price.PriceHistoryFeature
@@ -17,6 +18,7 @@ class ShopeeKitApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        KitLogger.init(this)
         // Load configurable base URL (relay proxy) before any network calls
         ShopeeHttpClient.init(this)
         features.forEach { it.initialize(this) }

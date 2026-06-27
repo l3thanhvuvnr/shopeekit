@@ -62,6 +62,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, TokenSetupActivity::class.java))
         }
 
+        // Long-press on settings icon → open Debug Log Viewer
+        findViewById<ImageButton>(R.id.btnTokenSetup).setOnLongClickListener {
+            startActivity(Intent(this, LogViewerActivity::class.java))
+            true
+        }
+
         findViewById<View?>(R.id.btnCookieSync)?.setOnClickListener {
             startActivity(Intent(this, ShopeeCookieSyncActivity::class.java))
         }

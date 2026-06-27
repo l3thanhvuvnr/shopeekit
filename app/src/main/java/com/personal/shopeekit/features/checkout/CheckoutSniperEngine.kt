@@ -1,6 +1,7 @@
 package com.personal.shopeekit.features.checkout
 
 import android.content.Context
+import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.time.RttMeasurer
 import com.personal.shopeekit.core.time.SpeculativeScheduler
 import com.personal.shopeekit.core.time.TimeSync
@@ -47,6 +48,7 @@ class CheckoutSniperEngine(private val context: Context) {
     val state: StateFlow<CheckoutSniperState> = _state
 
     fun arm(config: CheckoutConfig) {
+        KitLogger.i("ENG", "arm() — releaseAt=${config.releaseTimeMs} timeout=${config.retryTimeoutMs}ms pref=${config.voucherPreference}")
         cancelInternalJobs()
         _state.value = CheckoutSniperState.Armed(
             config = config,
@@ -93,6 +95,8 @@ class CheckoutSniperEngine(private val context: Context) {
             serverOffsetMs = serverOffset
         )
 
+        KitLogger.i("ENG", "calibrated — offset=${serverOffset}ms RTT=${rtt}ms lead=${lead}ms fireAt=$fireAtLocal jitter=$jitter")
+
         warmUpJob = scope.launch { runWarmUp(fireAtLocal) }
 
         scheduler.scheduleAt(fireAtLocal) {
@@ -113,6 +117,7 @@ class CheckoutSniperEngine(private val context: Context) {
     private suspend fun executeFireLoop(config: CheckoutConfig) {
         // E5: screen guard — bail if not on checkout screen before first tap
         if (!ShopeeAccessibilityService.isOnCheckoutScreen()) {
+            KitLogger.w("ENG", "ABORT — not on checkout screen, disarming")
             _state.value = CheckoutSniperState.Failed(
                 reason = "Không ở màn thanh toán — hãy mở Shopee về trang checkout trước",
                 attemptCount = 0
@@ -126,6 +131,7 @@ class CheckoutSniperEngine(private val context: Context) {
         while (System.currentTimeMillis() < deadline && attempt < MAX_ATTEMPTS) {
             attempt++
             val attemptMs = System.currentTimeMillis()
+            KitLogger.d("ENG", "attempt #$attempt / $MAX_ATTEMPTS (deadline in ${deadline - attemptMs}ms)")
 
             // E1: IDEMPOTENCY CHECK — detect order already placed before attempting
             if (ShopeeAccessibilityService.hasRecentOrder()) {
@@ -151,6 +157,8 @@ class CheckoutSniperEngine(private val context: Context) {
 
             when (result) {
                 is PlaceOrderResult.Success -> {
+                    val latency = System.currentTimeMillis() - config.releaseTimeMs
+                    KitLogger.i("ENG", "SUCCESS latency=${latency}ms voucher=$appliedVoucher")
                     _state.value = CheckoutSniperState.Success(
                         latencyMs = System.currentTimeMillis() - config.releaseTimeMs,
                         appliedVoucher = appliedVoucher
@@ -160,6 +168,7 @@ class CheckoutSniperEngine(private val context: Context) {
 
                 // E2: PIN/OTP → stop immediately, notify user
                 is PlaceOrderResult.RequiresPin -> {
+                    KitLogger.w("ENG", "STOP — PIN/OTP prompt detected: ${result.hint.take(60)}")
                     _state.value = CheckoutSniperState.RequiresPin(result.hint)
                     return
                 }
@@ -197,6 +206,7 @@ class CheckoutSniperEngine(private val context: Context) {
                 }
 
                 is PlaceOrderResult.Unknown -> {
+                    KitLogger.d("ENG", "Unknown result: ${result.message.take(80)}, waiting ${POST_TAP_CHECK_MS}ms for success screen")
                     // E1: after Unknown, wait briefly to detect success screen before retrying
                     // (prevents double-order when order placed but network response delayed)
                     delay(POST_TAP_CHECK_MS)
@@ -225,6 +235,7 @@ class CheckoutSniperEngine(private val context: Context) {
         else
             "Hết thời gian retry (${config.retryTimeoutMs / 1000}s)"
 
+        KitLogger.e("ENG", "FAILED — $reason after $attempt attempts")
         _state.value = CheckoutSniperState.Failed(reason = reason, attemptCount = attempt)
     }
 

@@ -1,6 +1,7 @@
 package com.personal.shopeekit.service
 
 import android.view.accessibility.AccessibilityNodeInfo
+import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.storage.AppDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -99,16 +100,28 @@ object ShopeeUIDiscovery {
         requireClickable: Boolean = true
     ): AccessibilityNodeInfo? {
         // Layer 1: Cached resource ID
-        findByCachedId(root, screen, element, requireClickable)?.let { return it }
+        findByCachedId(root, screen, element, requireClickable)?.let {
+            KitLogger.d("UI", "find ${element.key} → L1 cache hit")
+            return it
+        }
 
         // Layer 2: Text content
-        findByText(root, screen, element, requireClickable)?.let { return it }
+        findByText(root, screen, element, requireClickable)?.let {
+            KitLogger.d("UI", "find ${element.key} → L2 text match")
+            return it
+        }
 
         // Layer 3: Content description
-        findByContentDesc(root, screen, element, requireClickable)?.let { return it }
+        findByContentDesc(root, screen, element, requireClickable)?.let {
+            KitLogger.d("UI", "find ${element.key} → L3 contentDesc match")
+            return it
+        }
 
         // Layer 4: Heuristic
-        return findByHeuristic(root, screen, element, requireClickable)
+        return findByHeuristic(root, screen, element, requireClickable).also {
+            if (it != null) KitLogger.d("UI", "find ${element.key} → L4 heuristic")
+            else KitLogger.w("UI", "find ${element.key} → NOT FOUND (all layers failed)")
+        }
     }
 
     /**
@@ -158,6 +171,7 @@ object ShopeeUIDiscovery {
     private fun findVoucherItems(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
         val items = mutableListOf<AccessibilityNodeInfo>()
         collectVoucherItemNodes(root, items, depth = 0)
+        KitLogger.d("UI", "findVoucherItems → ${items.size} items found")
         return items
     }
 

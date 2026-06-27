@@ -2,4 +2,6 @@
 <paths>
     <!-- Exported CSV files live in cacheDir (see PriceHistoryActivity.exportCsv). -->
     <cache-path name="exports" path="." />
+    <!-- Debug log files live in filesDir/logs/ (see KitLogger.exportToFile). -->
+    <files-path name="logs" path="logs/" />
 </paths>
