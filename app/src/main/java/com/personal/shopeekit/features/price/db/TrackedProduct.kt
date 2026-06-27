@@ -18,5 +18,7 @@ data class TrackedProduct(
     /** How often to poll (hours). */
     val pollIntervalHours: Int = 4,
     val addedAt: Long = System.currentTimeMillis(),
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    /** Epoch ms of the last price-drop alert sent (0 = never). Used for cooldown. */
+    val lastAlertAtMs: Long = 0L
 )

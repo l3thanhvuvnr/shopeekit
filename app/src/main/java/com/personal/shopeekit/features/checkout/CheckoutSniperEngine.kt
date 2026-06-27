@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,54 +21,63 @@ import kotlinx.coroutines.launch
  * Flow:
  *  1. arm(config) → calibrate TimeSync + RTT
  *  2. Schedule fire at (releaseTimeMs - rtt - buffer)
- *  3. On fire: apply best voucher + place order
+ *  3. On fire: verify on checkout screen → apply best voucher + place order
  *  4. If rejected: re-scan voucher list fresh → retry every 50ms
  *  5. Before each retry: idempotency check (order already placed?)
- *  6. Stop on: SUCCESS / OUT_OF_STOCK / PAYMENT_ERROR / TIMEOUT
+ *  6. Stop on: SUCCESS / OUT_OF_STOCK / PAYMENT_ERROR / REQUIRES_PIN / TIMEOUT / MAX_ATTEMPTS
  */
 class CheckoutSniperEngine(private val context: Context) {
 
     companion object {
-        // Warm-up window before fire: mimic a human glancing at the checkout
-        // screen instead of standing perfectly still then tapping at T.
         private const val WARMUP_LEAD_MS = 2_000L
         private const val WARMUP_STEP_MS = 350L
+        // E1: cap attempts to prevent runaway retries / double-order
+        private const val MAX_ATTEMPTS = 25
+        // E1: after tapping place-order, wait this long to detect success screen
+        private const val POST_TAP_CHECK_MS = 1_500L
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val scheduler = SpeculativeScheduler()
     private var calibrationJob: Job? = null
     private var fireJob: Job? = null
+    private var warmUpJob: Job? = null
 
     private val _state = MutableStateFlow<CheckoutSniperState>(CheckoutSniperState.Idle)
     val state: StateFlow<CheckoutSniperState> = _state
 
     fun arm(config: CheckoutConfig) {
-        cancel()
+        cancelInternalJobs()
         _state.value = CheckoutSniperState.Armed(
             config = config,
             fireAtMs = 0L,
             rttMs = 0L,
             serverOffsetMs = 0L
         )
-
-        calibrationJob = scope.launch {
-            calibrateAndSchedule(config)
-        }
+        calibrationJob = scope.launch { calibrateAndSchedule(config) }
     }
 
     fun disarm() {
-        cancel()
+        cancelInternalJobs()
         _state.value = CheckoutSniperState.Idle
     }
 
-    private fun cancel() {
+    /** Release all resources. Call from CheckoutSniperFeature.release(). */
+    fun destroy() {
+        cancelInternalJobs()
+        scope.cancel()
+    }
+
+    private fun cancelInternalJobs() {
         scheduler.cancel()
         calibrationJob?.cancel()
         fireJob?.cancel()
+        warmUpJob?.cancel()
     }
 
     private suspend fun calibrateAndSchedule(config: CheckoutConfig) {
+        // F3: ensure fresh calibration immediately before scheduling
+        TimeSync.ensureFresh()
         val serverOffset = TimeSync.calibrate()
         val rtt = RttMeasurer.measure()
         val jitter = HumanBehavior.leadJitterMs()
@@ -83,22 +93,13 @@ class CheckoutSniperEngine(private val context: Context) {
             serverOffsetMs = serverOffset
         )
 
-        // Warm-up: in the last ~2s before fire, perform harmless reads/scrolls so
-        // the session shows human-like activity rather than a dead-still wait.
-        scope.launch { runWarmUp(fireAtLocal) }
+        warmUpJob = scope.launch { runWarmUp(fireAtLocal) }
 
         scheduler.scheduleAt(fireAtLocal) {
-            fireJob = scope.launch {
-                executeFireLoop(config)
-            }
+            fireJob = scope.launch { executeFireLoop(config) }
         }
     }
 
-    /**
-     * Gentle, low-frequency UI activity in the warm-up window before fire.
-     * Reads the node tree and nudges a small scroll — enough to look alive,
-     * not enough to disturb the checkout state.
-     */
     private suspend fun runWarmUp(fireAtLocal: Long) {
         while (System.currentTimeMillis() < fireAtLocal - WARMUP_LEAD_MS) {
             delay(200L)
@@ -110,14 +111,23 @@ class CheckoutSniperEngine(private val context: Context) {
     }
 
     private suspend fun executeFireLoop(config: CheckoutConfig) {
+        // E5: screen guard — bail if not on checkout screen before first tap
+        if (!ShopeeAccessibilityService.isOnCheckoutScreen()) {
+            _state.value = CheckoutSniperState.Failed(
+                reason = "Không ở màn thanh toán — hãy mở Shopee về trang checkout trước",
+                attemptCount = 0
+            )
+            return
+        }
+
         val deadline = System.currentTimeMillis() + config.retryTimeoutMs
         var attempt = 0
 
-        while (System.currentTimeMillis() < deadline) {
+        while (System.currentTimeMillis() < deadline && attempt < MAX_ATTEMPTS) {
             attempt++
             val attemptMs = System.currentTimeMillis()
 
-            // IDEMPOTENCY CHECK — detect order already placed (network lag edge case)
+            // E1: IDEMPOTENCY CHECK — detect order already placed before attempting
             if (ShopeeAccessibilityService.hasRecentOrder()) {
                 _state.value = CheckoutSniperState.Success(
                     latencyMs = attemptMs - config.releaseTimeMs,
@@ -131,9 +141,8 @@ class CheckoutSniperEngine(private val context: Context) {
 
             // Step 1: Apply best voucher (fresh scan every attempt)
             _state.value = CheckoutSniperState.ApplyingVoucher
-            val appliedVoucher = applyBestVoucher(config.voucherPreference)
+            val appliedVoucher = ShopeeAccessibilityService.applyBestVoucher(config.voucherPreference)
 
-            // Human-like delay between apply and place order (right-skewed).
             delay(HumanBehavior.applyToOrderDelayMs())
 
             // Step 2: Place order
@@ -149,8 +158,13 @@ class CheckoutSniperEngine(private val context: Context) {
                     return
                 }
 
+                // E2: PIN/OTP → stop immediately, notify user
+                is PlaceOrderResult.RequiresPin -> {
+                    _state.value = CheckoutSniperState.RequiresPin(result.hint)
+                    return
+                }
+
                 is PlaceOrderResult.VoucherNotYet -> {
-                    // Voucher delayed — retry with fresh voucher scan next iteration
                     val retryMs = HumanBehavior.retryDelayMs()
                     _state.value = CheckoutSniperState.RetryLoop(
                         attemptCount = attempt,
@@ -183,7 +197,18 @@ class CheckoutSniperEngine(private val context: Context) {
                 }
 
                 is PlaceOrderResult.Unknown -> {
-                    // Unknown result — retry
+                    // E1: after Unknown, wait briefly to detect success screen before retrying
+                    // (prevents double-order when order placed but network response delayed)
+                    delay(POST_TAP_CHECK_MS)
+                    if (ShopeeAccessibilityService.hasRecentOrder()) {
+                        _state.value = CheckoutSniperState.Success(
+                            latencyMs = System.currentTimeMillis() - config.releaseTimeMs,
+                            appliedVoucher = appliedVoucher,
+                            detectedExisting = true
+                        )
+                        return
+                    }
+
                     val retryMs = HumanBehavior.retryDelayMs()
                     _state.value = CheckoutSniperState.RetryLoop(
                         attemptCount = attempt,
@@ -195,23 +220,14 @@ class CheckoutSniperEngine(private val context: Context) {
             }
         }
 
-        _state.value = CheckoutSniperState.Failed(
-            reason = "Hết thời gian retry (${config.retryTimeoutMs / 1000}s)",
-            attemptCount = attempt
-        )
+        val reason = if (attempt >= MAX_ATTEMPTS)
+            "Đã thử $MAX_ATTEMPTS lần, dừng để tránh đặt trùng đơn"
+        else
+            "Hết thời gian retry (${config.retryTimeoutMs / 1000}s)"
+
+        _state.value = CheckoutSniperState.Failed(reason = reason, attemptCount = attempt)
     }
 
-    /**
-     * Apply best voucher via AccessibilityService.
-     * Returns display name of applied voucher, or null.
-     */
-    private suspend fun applyBestVoucher(preference: VoucherPreference): String? {
-        return ShopeeAccessibilityService.applyBestVoucher(preference)
-    }
-
-    /**
-     * Time remaining until voucher release (ms). Negative if overdue.
-     */
     fun msUntilRelease(): Long {
         return when (val s = _state.value) {
             is CheckoutSniperState.Armed -> s.config.releaseTimeMs - TimeSync.serverTimeMs()

@@ -43,6 +43,11 @@ class RetryLogicTest {
         assertFalse(shouldRetry(PlaceOrderResult.AccessibilityUnavailable))
     }
 
+    @Test
+    fun `RequiresPin should NOT trigger retry`() {
+        assertFalse(shouldRetry(PlaceOrderResult.RequiresPin("nhập mã pin")))
+    }
+
     // ─── Timeout logic ────────────────────────────────────────────────────────
 
     @Test

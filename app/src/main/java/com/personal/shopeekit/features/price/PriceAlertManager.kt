@@ -28,6 +28,8 @@ class PriceAlertManager(private val context: Context) {
         threshold: Long
     ) {
         val manager = context.getSystemService(NotificationManager::class.java)
+        // No POST_NOTIFICATIONS permission (API 33+) or user disabled the channel.
+        if (!manager.areNotificationsEnabled()) return
         val drop = previousPrice - currentPrice
         val notifId = productId.hashCode()
 

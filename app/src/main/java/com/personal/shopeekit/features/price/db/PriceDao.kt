@@ -45,4 +45,13 @@ interface PriceDao {
 
     @Query("UPDATE tracked_products SET alertThresholdVnd = :threshold WHERE productId = :productId")
     suspend fun updateAlertThreshold(productId: String, threshold: Long)
+
+    @Query("UPDATE tracked_products SET pollIntervalHours = :hours WHERE productId = :productId")
+    suspend fun updatePollInterval(productId: String, hours: Int)
+
+    @Query("UPDATE tracked_products SET productName = :name, thumbnailUrl = :thumbnailUrl WHERE productId = :productId")
+    suspend fun updateProductMeta(productId: String, name: String, thumbnailUrl: String)
+
+    @Query("UPDATE tracked_products SET lastAlertAtMs = :timestamp WHERE productId = :productId")
+    suspend fun updateLastAlert(productId: String, timestamp: Long)
 }

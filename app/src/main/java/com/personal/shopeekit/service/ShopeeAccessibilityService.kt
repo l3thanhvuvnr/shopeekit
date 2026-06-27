@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import com.personal.shopeekit.R
 import com.personal.shopeekit.core.storage.ShopeeConfig
 import com.personal.shopeekit.features.checkout.HumanBehavior
+import com.personal.shopeekit.features.checkout.OrderResultParser
 import com.personal.shopeekit.features.checkout.PlaceOrderResult
 import com.personal.shopeekit.features.checkout.VoucherPreference
 import com.personal.shopeekit.service.ShopeeUIDiscovery.ShopeeElement
@@ -85,6 +86,15 @@ class ShopeeAccessibilityService : AccessibilityService() {
         }
 
         /**
+         * E5: Check if the current screen is the checkout screen.
+         * Guards against firing when user navigated away.
+         */
+        fun isOnCheckoutScreen(): Boolean {
+            val svc = instance ?: return false
+            return svc.detectCheckoutScreen()
+        }
+
+        /**
          * Harmless warm-up activity before fire (anti-fraud). No-op if the
          * service isn't connected. See [performWarmUpNudge].
          */
@@ -142,6 +152,8 @@ class ShopeeAccessibilityService : AccessibilityService() {
             ?: rootInActiveWindow ?: return null
 
         // Step 2: Select best voucher
+        // E4: scroll the picker list to trigger RN lazy-render before collecting items
+        scrollVoucherList(updatedRoot)
         val appliedName = when (preference) {
             is VoucherPreference.AutoBest -> clickAutoSelectButton(updatedRoot)
             is VoucherPreference.MaxDiscount -> selectVoucherByMaxDiscount(updatedRoot)
@@ -162,8 +174,8 @@ class ShopeeAccessibilityService : AccessibilityService() {
     /**
      * Poll the active window until [element] appears on [screen], or [timeoutMs]
      * elapses. Returns the root that contains it, or null on timeout.
-     * Needed because Shopee's React Native screens render asynchronously, so a
-     * fixed Thread.sleep is both flaky and slow.
+     * Uses SystemClock.sleep (OK on non-main thread called from AccessibilityService
+     * callback) rather than Thread.sleep to avoid spurious ANR traces.
      */
     private fun waitForElement(
         screen: ShopeeScreen,
@@ -177,7 +189,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
             if (root != null && ShopeeUIDiscovery.find(root, screen, element, requireClickable = false) != null) {
                 return root
             }
-            Thread.sleep(stepMs)
+            android.os.SystemClock.sleep(stepMs)
         }
         return rootInActiveWindow
     }
@@ -271,8 +283,8 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val clicked = humanTap(placeOrderBtn)
         if (!clicked) return PlaceOrderResult.AccessibilityUnavailable
 
-        // Wait for UI feedback (toast / dialog)
-        Thread.sleep(500)
+        // Wait for UI feedback (toast / dialog / PIN prompt)
+        android.os.SystemClock.sleep(500)
 
         return parseOrderResult()
     }
@@ -302,32 +314,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
 
     private fun parseOrderResult(): PlaceOrderResult {
         val root = rootInActiveWindow ?: return PlaceOrderResult.Unknown("No root")
-        val text = extractAllText(root).lowercase()
-
-        return when {
-            // Success signals
-            text.contains("thành công") || text.contains("đã đặt hàng") ||
-            text.contains("order placed") || text.contains("successfully") ->
-                PlaceOrderResult.Success
-
-            // Voucher not yet valid — retry
-            text.contains("chưa hợp lệ") || text.contains("chưa đến giờ") ||
-            text.contains("not yet available") || text.contains("invalid voucher") ||
-            text.contains("voucher không hợp lệ") ->
-                PlaceOrderResult.VoucherNotYet
-
-            // Out of stock
-            text.contains("hết hàng") || text.contains("sold out") ||
-            text.contains("out of stock") || text.contains("hết voucher") ->
-                PlaceOrderResult.OutOfStock
-
-            // Payment error
-            text.contains("lỗi thanh toán") || text.contains("payment failed") ||
-            text.contains("payment error") ->
-                PlaceOrderResult.PaymentError
-
-            else -> PlaceOrderResult.Unknown(text.take(100))
-        }
+        return OrderResultParser.parse(extractAllText(root))
     }
 
     private fun extractAllText(node: AccessibilityNodeInfo): String {
@@ -351,16 +338,36 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return false
         val text = extractAllText(root).lowercase()
 
-        // Check current screen for order success indicators
         return text.contains("đặt hàng thành công") ||
             text.contains("order placed successfully") ||
             text.contains("đã đặt hàng") ||
-            text.contains("mã đơn hàng") ||  // "Order code: xxx"
+            text.contains("mã đơn hàng") ||
             text.contains("order id") ||
             text.contains("order #")
     }
 
+    // E5: check current screen has checkout signals (before firing)
+    private fun detectCheckoutScreen(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val text = extractAllText(root).lowercase()
+        // Must have place-order button text OR order total visible
+        return text.contains("đặt hàng") || text.contains("place order") ||
+            text.contains("tổng thanh toán") || text.contains("total payment")
+    }
+
     // ─── CheckoutSniper: Warm-up (anti-fraud) ────────────────────────────────
+
+    /**
+     * E4: Scroll voucher picker list down then back to trigger RN lazy rendering.
+     * Without this, items at the bottom of the list may not yet be in the a11y tree.
+     */
+    private fun scrollVoucherList(root: AccessibilityNodeInfo) {
+        val scrollable = findScrollable(root) ?: return
+        scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
+        android.os.SystemClock.sleep(150)
+        scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
+        android.os.SystemClock.sleep(100)
+    }
 
     /**
      * One unit of harmless "I'm looking at the screen" activity, run repeatedly
@@ -372,7 +379,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val scrollable = findScrollable(root) ?: return
         scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
-        Thread.sleep(HumanBehavior.tapDurationMs())
+        android.os.SystemClock.sleep(HumanBehavior.tapDurationMs())
         scrollable.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
     }
 

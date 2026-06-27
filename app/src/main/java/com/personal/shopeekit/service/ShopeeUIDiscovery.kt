@@ -2,6 +2,9 @@ package com.personal.shopeekit.service
 
 import android.view.accessibility.AccessibilityNodeInfo
 import com.personal.shopeekit.core.storage.AppDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -35,7 +38,8 @@ object ShopeeUIDiscovery {
         VOUCHER_LIST_ITEM("voucher_list_item"),
         VOUCHER_DISCOUNT_TEXT("voucher_discount_text"),
         ORDER_SUCCESS_TEXT("order_success_text"),
-        ORDER_LIST_ITEM("order_list_item")
+        ORDER_LIST_ITEM("order_list_item"),
+        PAYMENT_PIN_PROMPT("payment_pin_prompt")
     }
 
     // ─── Text labels by screen element ──────────────────────────────────────
@@ -64,6 +68,10 @@ object ShopeeUIDiscovery {
         ShopeeElement.ORDER_SUCCESS_TEXT to listOf(
             "Đặt hàng thành công", "Đã đặt hàng", "Order placed",
             "Thành công", "Successfully"
+        ),
+        ShopeeElement.PAYMENT_PIN_PROMPT to listOf(
+            "Nhập mã PIN", "Mã PIN", "Nhập OTP", "Mã OTP",
+            "ShopeePay PIN", "Xác thực thanh toán", "Enter PIN", "Payment PIN"
         )
     )
 
@@ -105,12 +113,19 @@ object ShopeeUIDiscovery {
 
     /**
      * Find multiple nodes (e.g., all voucher list items).
+     * For VOUCHER_LIST_ITEM: uses money-text content detection because RN voucher
+     * items have no fixed text label — only discount/cashback amount text.
      */
     fun findAll(
         root: AccessibilityNodeInfo,
         screen: ShopeeScreen,
         element: ShopeeElement
     ): List<AccessibilityNodeInfo> {
+        // E3: special path for voucher items — content-based, not label-based
+        if (element == ShopeeElement.VOUCHER_LIST_ITEM) {
+            return findVoucherItems(root)
+        }
+
         val results = mutableListOf<AccessibilityNodeInfo>()
 
         // Try cached ID first
@@ -132,6 +147,57 @@ object ShopeeUIDiscovery {
             }
         }
         return results
+    }
+
+    /**
+     * E3+E4: Find voucher list items using money-text detection.
+     * RN voucher items don't have a fixed text label — identify them by
+     * the presence of discount/cashback text patterns in their subtree.
+     * Collects clickable nodes whose subtree contains ₫ / % / "Giảm" / "Hoàn".
+     */
+    private fun findVoucherItems(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val items = mutableListOf<AccessibilityNodeInfo>()
+        collectVoucherItemNodes(root, items, depth = 0)
+        return items
+    }
+
+    private val moneyPattern = Regex("""(₫|\d[\d.]+đ|\d+%|Giảm|Hoàn|giảm|hoàn|discount|cashback)""")
+
+    private fun collectVoucherItemNodes(
+        node: AccessibilityNodeInfo,
+        results: MutableList<AccessibilityNodeInfo>,
+        depth: Int
+    ) {
+        // Limit traversal depth to avoid processing entire tree
+        if (depth > 8) return
+
+        // A voucher item candidate: clickable, has money-related text in subtree,
+        // and is not a button (buttons are control elements, not list items)
+        if (node.isClickable && node.isEnabled && depth >= 2) {
+            val subtreeText = collectSubtreeText(node)
+            val cls = node.className?.toString() ?: ""
+            val isButton = cls.contains("Button", ignoreCase = true) && !cls.contains("View")
+            if (!isButton && moneyPattern.containsMatchIn(subtreeText)) {
+                results.add(node)
+                return // don't descend into children of a matched item
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectVoucherItemNodes(child, results, depth + 1)
+        }
+    }
+
+    private fun collectSubtreeText(node: AccessibilityNodeInfo): String {
+        val sb = StringBuilder()
+        if (node.text != null) sb.append(node.text).append(' ')
+        if (node.contentDescription != null) sb.append(node.contentDescription).append(' ')
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            sb.append(collectSubtreeText(child))
+        }
+        return sb.toString()
     }
 
     // ─── Layer 1: Cached Resource ID ────────────────────────────────────────
@@ -325,6 +391,8 @@ object ShopeeUIDiscovery {
     // ─── Cache (DataStore backed) ─────────────────────────────────────────────
 
     private val memCache = mutableMapOf<String, String>()
+    // Background IO scope for async DataStore persistence. runBlocking only on read (cold start).
+    private val ioScope = CoroutineScope(Dispatchers.IO)
 
     private fun loadCachedId(screen: ShopeeScreen, element: ShopeeElement): String? {
         val key = cacheKey(screen, element)
@@ -336,9 +404,10 @@ object ShopeeUIDiscovery {
     private fun cacheId(screen: ShopeeScreen, element: ShopeeElement, id: String) {
         if (id.isBlank()) return
         val key = cacheKey(screen, element)
-        if (memCache[key] == id) return // already cached
+        if (memCache[key] == id) return
         memCache[key] = id
-        runBlocking { AppDataStore.setString(key, id) }
+        // Persist async — does not block the accessibility callback thread
+        ioScope.launch { AppDataStore.setString(key, id) }
     }
 
     /**

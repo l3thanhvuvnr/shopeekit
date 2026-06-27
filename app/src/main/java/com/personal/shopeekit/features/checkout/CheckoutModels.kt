@@ -20,6 +20,12 @@ data class CheckoutConfig(
     val retryTimeoutMs: Long = DEFAULT_RETRY_TIMEOUT_MS,
     val selectedProductIds: List<String> = emptyList()
 ) {
+    init {
+        require(retryTimeoutMs in MIN_RETRY_TIMEOUT_MS..MAX_RETRY_TIMEOUT_MS) {
+            "retryTimeoutMs must be ${MIN_RETRY_TIMEOUT_MS}–${MAX_RETRY_TIMEOUT_MS} ms"
+        }
+    }
+
     companion object {
         const val DEFAULT_RETRY_TIMEOUT_MS = 120_000L  // 2 minutes
         const val MIN_RETRY_TIMEOUT_MS = 30_000L       // 30 seconds
@@ -65,6 +71,9 @@ sealed class CheckoutSniperState {
         val attemptCount: Int,
         val lastAttemptMs: Long = System.currentTimeMillis()
     ) : CheckoutSniperState()
+
+    // ShopeePay PIN/OTP prompt — loop stopped, user must enter manually
+    data class RequiresPin(val hint: String = "") : CheckoutSniperState()
 }
 
 /** Result from a single place-order attempt */
@@ -74,5 +83,7 @@ sealed class PlaceOrderResult {
     object OutOfStock : PlaceOrderResult()
     object PaymentError : PlaceOrderResult()
     object AccessibilityUnavailable : PlaceOrderResult()
+    // PIN/OTP prompt appeared — stop loop, notify user to enter manually
+    data class RequiresPin(val hint: String = "") : PlaceOrderResult()
     data class Unknown(val message: String) : PlaceOrderResult()
 }

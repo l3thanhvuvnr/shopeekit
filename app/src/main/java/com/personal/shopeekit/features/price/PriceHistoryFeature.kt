@@ -14,6 +14,8 @@ import com.personal.shopeekit.features.price.db.PriceDatabase
 import com.personal.shopeekit.features.price.db.TrackedProduct
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -23,6 +25,7 @@ class PriceHistoryFeature : KitFeature {
     override val iconRes = R.drawable.ic_price_chart
 
     private lateinit var appContext: Context
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     val calculator by lazy { BestPriceCalculator(appContext) }
     val db by lazy { PriceDatabase.getInstance(appContext) }
 
@@ -30,7 +33,9 @@ class PriceHistoryFeature : KitFeature {
         appContext = context.applicationContext
     }
 
-    override fun release() {}
+    override fun release() {
+        scope.cancel()
+    }
 
     override fun createMainView(context: Context): View = View(context)
 
@@ -39,19 +44,20 @@ class PriceHistoryFeature : KitFeature {
      * Extract productId and shopId from Shopee URL format:
      *   shopee.vn/{shop-name}.{shopId}.{productId}
      */
-    fun trackProduct(url: String, alertThresholdVnd: Long = 0L) {
+    fun trackProduct(url: String, alertThresholdVnd: Long = 0L, pollIntervalHours: Int = 4) {
         val (shopId, productId) = parseShopeeUrl(url) ?: return
         val product = TrackedProduct(
             productId = productId,
             shopId = shopId,
             productName = "Loading...",
             productUrl = url,
-            alertThresholdVnd = alertThresholdVnd
+            alertThresholdVnd = alertThresholdVnd,
+            pollIntervalHours = pollIntervalHours
         )
 
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             db.priceDao().insertProduct(product)
-            schedulePoller(productId, shopId, pollIntervalHours = 4)
+            schedulePoller(productId, shopId, pollIntervalHours)
         }
     }
 
@@ -73,9 +79,11 @@ class PriceHistoryFeature : KitFeature {
             .setConstraints(constraints)
             .build()
 
+        // UPDATE (not KEEP): if the user changes the poll interval, the existing
+        // schedule must be replaced — KEEP would silently ignore the new interval.
         workManager.enqueueUniquePeriodicWork(
             "${PricePoller.WORK_NAME_PREFIX}$productId",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
     }
@@ -83,7 +91,7 @@ class PriceHistoryFeature : KitFeature {
     fun stopTracking(productId: String) {
         WorkManager.getInstance(appContext)
             .cancelUniqueWork("${PricePoller.WORK_NAME_PREFIX}$productId")
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             db.priceDao().deactivateProduct(productId)
         }
     }

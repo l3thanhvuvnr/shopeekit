@@ -379,6 +379,13 @@ class CheckoutSniperActivity : AppCompatActivity() {
                     tvCheckoutDetail.text = "Lý do: ${state.reason} (${state.attemptCount} lần thử)"
                     CheckoutOverlayView.hide()
                 }
+                is CheckoutSniperState.RequiresPin -> {
+                    tvCheckoutStatus.text = "🔐 CẦN NHẬP PIN"
+                    tvCheckoutStatus.setTextColor(getColor(R.color.status_scheduled))
+                    tvCheckoutDetail.text = "ShopeePay yêu cầu PIN/OTP — mở Shopee và nhập tay"
+                    CheckoutOverlayView.hide()
+                    Toast.makeText(this, "🔐 Cần nhập PIN/OTP để hoàn tất", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

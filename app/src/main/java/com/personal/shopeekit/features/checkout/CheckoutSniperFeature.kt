@@ -18,7 +18,7 @@ class CheckoutSniperFeature : KitFeature {
     }
 
     override fun release() {
-        engine.disarm()
+        engine.destroy()
     }
 
     override fun createMainView(context: Context): View = View(context)

@@ -67,6 +67,11 @@ android {
     }
 }
 
+// Export Room schemas to VCS so migrations are reviewable.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -90,6 +95,14 @@ dependencies {
 
     // WorkManager
     implementation(libs.work.runtime.ktx)
+
+    // Lifecycle (ViewModel) + Activity KTX (by viewModels())
+    implementation(libs.lifecycle.viewmodel.ktx)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.ktx)
+
+    // Charts
+    implementation(libs.mpandroidchart)
 
     // Unit Tests
     testImplementation("junit:junit:4.13.2")

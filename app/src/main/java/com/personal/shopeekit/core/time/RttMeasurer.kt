@@ -2,16 +2,21 @@ package com.personal.shopeekit.core.time
 
 import com.personal.shopeekit.core.network.ShopeeHttpClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
  * Measures round-trip time (RTT) to Shopee server.
- * RTT is used to compute speculative fire time: fireAt = T - rtt - buffer
+ * RTT is used to compute speculative fire time.
+ *
+ * F2: Uses half-RTT for lead calculation.
+ * The fire-to-server trip is one-way (request only), so we need RTT/2 not full RTT.
+ * A configurable buffer is added on top for safety margin.
  */
 object RttMeasurer {
 
     private const val SAMPLE_COUNT = 5
-    @Volatile private var _rttMs: Long = 80L // conservative default
+    @Volatile private var _rttMs: Long = 80L   // conservative default
 
     val rttMs: Long get() = _rttMs
 
@@ -30,21 +35,18 @@ object RttMeasurer {
                 val elapsed = System.currentTimeMillis() - start
                 response.close()
                 samples.add(elapsed)
-            } catch (e: Exception) {
-                // Ignore
-            }
-            Thread.sleep(300)
+            } catch (_: Exception) { }
+            delay(300L)
         }
 
-        _rttMs = if (samples.isEmpty()) 80L
-                 else samples.sorted()[samples.size / 2]
+        _rttMs = if (samples.isEmpty()) 80L else samples.sorted()[samples.size / 2]
         _rttMs
     }
 
     /**
-     * Compute how many ms before T we should fire the accessibility click.
-     * We want the request to arrive at the server exactly at T.
-     * buffer = 30ms safety margin.
+     * F2: How many ms before T to fire the accessibility click.
+     * Uses half-RTT (one-way trip time) + buffer for safety.
+     * Full RTT was over-compensating — the response back doesn't need to arrive before T.
      */
-    fun speculativeLeadMs(bufferMs: Long = 30L): Long = _rttMs + bufferMs
+    fun speculativeLeadMs(bufferMs: Long = 30L): Long = (_rttMs / 2) + bufferMs
 }

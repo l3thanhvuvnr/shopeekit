@@ -103,11 +103,42 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Range selector -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupRange"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip7d"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="7 ngày" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip30d"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="30 ngày" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipAll"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tất cả" />
+        </com.google.android.material.chip.ChipGroup>
+
         <!-- Chart -->
-        <com.personal.shopeekit.ui.views.LineChartView
+        <com.github.mikephil.charting.charts.LineChart
             android:id="@+id/lineChart"
             android:layout_width="match_parent"
-            android:layout_height="96dp"
+            android:layout_height="160dp"
             android:layout_marginBottom="10dp" />
 
         <!-- Recommendation chip -->

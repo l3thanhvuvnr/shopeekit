@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Exported CSV files live in cacheDir (see PriceHistoryActivity.exportCsv). -->
+    <cache-path name="exports" path="." />
+</paths>

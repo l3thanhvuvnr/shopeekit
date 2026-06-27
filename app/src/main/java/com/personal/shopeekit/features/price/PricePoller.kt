@@ -8,6 +8,8 @@ import com.personal.shopeekit.core.storage.ShopeeConfig
 import com.personal.shopeekit.features.price.db.PriceDatabase
 import com.personal.shopeekit.features.price.db.PriceRecord
 import com.personal.shopeekit.features.price.db.TrackedProduct
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
@@ -27,6 +29,8 @@ class PricePoller(context: Context, params: WorkerParameters) :
         const val KEY_SHOP_ID = "shop_id"
 
         private const val PRICE_API_PATH = "/api/v4/pdp/get_pc"
+        private const val PRUNE_AGE_MS = 90L * 24 * 60 * 60 * 1000 // 90 days
+        private const val ALERT_COOLDOWN_MS = 12L * 60 * 60 * 1000 // 12h between alerts
     }
 
     private val db by lazy { PriceDatabase.getInstance(applicationContext) }
@@ -39,81 +43,128 @@ class PricePoller(context: Context, params: WorkerParameters) :
         if (shopId == -1L) return Result.failure()
 
         return try {
-            val priceData = fetchPrice(productId, shopId) ?: return Result.retry()
+            val fetch = fetchPrice(productId, shopId)
+            when (fetch) {
+                is FetchResult.Ok -> {
+                    val priceData = fetch.record
+                    val dao = db.priceDao()
 
-            // Save to DB
-            db.priceDao().insertPrice(priceData)
+                    // Read previous state BEFORE inserting the new row, otherwise
+                    // "is this a new low?" always compares the row against itself.
+                    val product = dao.getProduct(productId)
+                    val previousLowest = dao.getLowestPrice(productId)
+                    val previousLatest = dao.getLatestPrice(productId)
 
-            // Check alert threshold
-            val product = db.priceDao().getProduct(productId)
-            if (product != null && product.alertThresholdVnd > 0) {
-                checkAndNotifyAlert(product, priceData)
+                    dao.insertPrice(priceData)
+
+                    // Keep product metadata fresh (name starts as "Loading...").
+                    if (product != null &&
+                        (product.productName != priceData.productName ||
+                            product.thumbnailUrl != fetch.thumbnailUrl)
+                    ) {
+                        dao.updateProductMeta(productId, priceData.productName, fetch.thumbnailUrl)
+                    }
+
+                    if (product != null && product.alertThresholdVnd > 0) {
+                        maybeNotify(product, priceData, previousLowest, previousLatest)
+                    }
+
+                    dao.pruneOldRecords(productId, System.currentTimeMillis() - PRUNE_AGE_MS)
+                    Result.success()
+                }
+                FetchResult.AuthExpired -> Result.failure() // cookie dead — retry is pointless
+                FetchResult.Transient -> Result.retry()      // 429/5xx/network — back off & retry
             }
-
-            // Prune records older than 90 days
-            val cutoff = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
-            db.priceDao().pruneOldRecords(productId, cutoff)
-
-            Result.success()
         } catch (e: Exception) {
             Result.retry()
         }
     }
 
-    private fun fetchPrice(productId: String, shopId: Long): PriceRecord? {
-        val url = "${ShopeeHttpClient.baseUrl}$PRICE_API_PATH?item_id=$productId&shop_id=$shopId"
-        val request = ShopeeHttpClient.buildRequest(
-            url = url,
-            extraHeaders = config.buildAuthHeaders()
-        )
-
-        val response = ShopeeHttpClient.client.newCall(request).execute()
-        val body = response.body?.string() ?: return null
-        response.close()
-
-        return parsePriceResponse(body, productId, shopId)
+    private sealed class FetchResult {
+        data class Ok(val record: PriceRecord, val thumbnailUrl: String) : FetchResult()
+        object AuthExpired : FetchResult()
+        object Transient : FetchResult()
     }
 
-    private fun parsePriceResponse(json: String, productId: String, shopId: Long): PriceRecord? {
+    private suspend fun fetchPrice(productId: String, shopId: Long): FetchResult =
+        withContext(Dispatchers.IO) {
+            val url = "${ShopeeHttpClient.baseUrl}$PRICE_API_PATH?item_id=$productId&shop_id=$shopId"
+            val request = ShopeeHttpClient.buildRequest(
+                url = url,
+                extraHeaders = config.authHeaders()
+            )
+
+            ShopeeHttpClient.client.newCall(request).execute().use { response ->
+                when {
+                    response.code == 401 || response.code == 403 -> FetchResult.AuthExpired
+                    response.code == 429 || response.code >= 500 -> FetchResult.Transient
+                    !response.isSuccessful -> FetchResult.Transient
+                    else -> {
+                        val body = response.body?.string() ?: return@use FetchResult.Transient
+                        parsePriceResponse(body, productId, shopId) ?: FetchResult.Transient
+                    }
+                }
+            }
+        }
+
+    private fun parsePriceResponse(json: String, productId: String, shopId: Long): FetchResult? {
         return try {
             val root = JSONObject(json)
             val data = root.optJSONObject("data") ?: return null
             val item = data.optJSONObject("item") ?: return null
 
             val price = item.optLong("price", 0L) / 100_000L // Shopee returns price * 100000
+            // price == 0 means out of stock / model-based pricing — don't pollute history.
+            if (price <= 0L) return null
+
             val originalPrice = item.optLong("price_before_discount", 0L) / 100_000L
             val name = item.optString("name", "Unknown Product")
+            val thumbnail = item.optString("image", "")
             val discountPercent = if (originalPrice > 0 && price < originalPrice)
                 ((1.0 - price.toDouble() / originalPrice) * 100).toInt()
             else 0
 
-            PriceRecord(
-                productId = productId,
-                shopId = shopId,
-                productName = name,
-                price = price,
-                originalPrice = if (originalPrice > 0) originalPrice else price,
-                discountPercent = discountPercent,
-                timestamp = System.currentTimeMillis()
+            FetchResult.Ok(
+                record = PriceRecord(
+                    productId = productId,
+                    shopId = shopId,
+                    productName = name,
+                    price = price,
+                    originalPrice = if (originalPrice > 0) originalPrice else price,
+                    discountPercent = discountPercent,
+                    timestamp = System.currentTimeMillis()
+                ),
+                thumbnailUrl = thumbnail
             )
         } catch (e: Exception) {
             null
         }
     }
 
-    private suspend fun checkAndNotifyAlert(product: TrackedProduct, current: PriceRecord) {
-        val previous = db.priceDao().getLatestPrice(product.productId)
-        val isNewLow = previous == null || current.price < previous.price
+    /**
+     * Notify only when the price is below the user's threshold AND it's a genuine
+     * new low (vs all prior history), AND we haven't alerted within the cooldown.
+     */
+    private suspend fun maybeNotify(
+        product: TrackedProduct,
+        current: PriceRecord,
+        previousLowest: Long?,
+        previousLatest: PriceRecord?
+    ) {
         val belowThreshold = current.price <= product.alertThresholdVnd
+        val isNewLow = previousLowest == null || current.price < previousLowest
+        val now = System.currentTimeMillis()
+        val cooldownOver = now - product.lastAlertAtMs >= ALERT_COOLDOWN_MS
 
-        if (belowThreshold && isNewLow) {
+        if (belowThreshold && isNewLow && cooldownOver) {
             alertManager.notifyPriceDrop(
                 productId = product.productId,
                 productName = current.productName,
                 currentPrice = current.price,
-                previousPrice = previous?.price ?: current.originalPrice,
+                previousPrice = previousLatest?.price ?: current.originalPrice,
                 threshold = product.alertThresholdVnd
             )
+            db.priceDao().updateLastAlert(product.productId, now)
         }
     }
 }

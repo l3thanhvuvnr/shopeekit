@@ -37,7 +37,18 @@ class ShopeeConfig(private val context: Context) {
     val baseUrlFlow: Flow<String> = context.configDataStore.data
         .map { it[KEY_SHOPEE_BASE_URL] ?: DEFAULT_BASE_URL }
 
-    // Sync accessors for non-coroutine contexts (use sparingly)
+    // Suspend accessors — prefer these everywhere we're already in a coroutine.
+    suspend fun getCookie(): String = cookieFlow.first()
+    suspend fun getUserAgent(): String = userAgentFlow.first()
+    suspend fun getBaseUrl(): String = baseUrlFlow.first()
+
+    /** Auth headers for an authenticated request. Safe to call from a coroutine. */
+    suspend fun authHeaders(): Map<String, String> = mapOf(
+        "Cookie" to getCookie(),
+        "User-Agent" to getUserAgent()
+    ).filterValues { it.isNotBlank() }
+
+    // Sync accessors for non-coroutine contexts (use sparingly — never on the main thread).
     fun getCookieSync(): String = runBlocking { cookieFlow.first() }
     fun getUserAgentSync(): String = runBlocking { userAgentFlow.first() }
     fun getBaseUrlSync(): String = runBlocking { baseUrlFlow.first() }
