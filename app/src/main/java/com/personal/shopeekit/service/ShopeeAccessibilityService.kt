@@ -31,9 +31,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 /**
  * Accessibility Service for ShopeeKit.
@@ -118,7 +122,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
          * "open drawer → Đồng ý" (the refresh action) is itself the pass condition —
          * requiring an applied state would wrongly fail the test.
          */
-        fun applyBestVoucher(
+        suspend fun applyBestVoucher(
             preference: VoucherPreference,
             requireApplied: Boolean
         ): VoucherApplyResult {
@@ -129,7 +133,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
         /**
          * Click the "Đặt hàng" button and parse result.
          */
-        fun clickPlaceOrder(): PlaceOrderResult {
+        suspend fun clickPlaceOrder(): PlaceOrderResult {
             val svc = instance ?: return PlaceOrderResult.AccessibilityUnavailable
             return svc.performPlaceOrder()
         }
@@ -236,7 +240,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * distinctly so the 2-step rehearsal can tell the user exactly where it broke
      * and the 3-step run can refuse to order when the voucher never applied.
      */
-    private fun performApplyBestVoucher(
+    private suspend fun performApplyBestVoucher(
         preference: VoucherPreference,
         requireApplied: Boolean
     ): VoucherApplyResult {
@@ -414,7 +418,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
                     else -> unreadableSinceMs = 0L   // ABSENT → keep waiting, don't bail
                 }
             }
-            android.os.SystemClock.sleep(POLL_STEP_MS)
+            delay(POLL_STEP_MS)
         }
         if (applied) {
             val discountText = platformVoucherRowValue(rootInActiveWindow) ?: parsed?.discountText
@@ -448,7 +452,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
                     )
                     return VoucherApplyResult.NothingApplied
                 }
-                else -> android.os.SystemClock.sleep(POLL_STEP_MS)
+                else -> delay(POLL_STEP_MS)
             }
         }
         KitLogger.w(
@@ -467,7 +471,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * Uses SystemClock.sleep (OK on non-main thread called from AccessibilityService
      * callback) rather than Thread.sleep to avoid spurious ANR traces.
      */
-    private fun waitForElement(
+    private suspend fun waitForElement(
         screen: ShopeeScreen,
         element: ShopeeElement,
         timeoutMs: Long = 800L,
@@ -481,7 +485,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
             ) {
                 return root
             }
-            android.os.SystemClock.sleep(stepMs)
+            delay(stepMs)
         }
         return rootInActiveWindow
     }
@@ -494,7 +498,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * place-order button is always findable — "place-order visible again" is NOT a
      * reliable "drawer closed" signal, but "confirm button gone" is.
      */
-    private fun waitForElementGone(
+    private suspend fun waitForElementGone(
         screen: ShopeeScreen,
         element: ShopeeElement,
         timeoutMs: Long = 2000L,
@@ -508,12 +512,12 @@ class ShopeeAccessibilityService : AccessibilityService() {
             ) {
                 return true
             }
-            android.os.SystemClock.sleep(stepMs)
+            delay(stepMs)
         }
         return false
     }
 
-    private fun selectVoucherByMaxDiscount(root: AccessibilityNodeInfo): String? {
+    private suspend fun selectVoucherByMaxDiscount(root: AccessibilityNodeInfo): String? {
         val items = ShopeeUIDiscovery.findAll(root, ShopeeScreen.VOUCHER_LIST, ShopeeElement.VOUCHER_LIST_ITEM)
         if (items.isEmpty()) return null
 
@@ -523,7 +527,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
         return best.text?.toString() ?: extractDiscountText(best)
     }
 
-    private fun selectVoucherByMaxCashback(root: AccessibilityNodeInfo): String? {
+    private suspend fun selectVoucherByMaxCashback(root: AccessibilityNodeInfo): String? {
         val items = ShopeeUIDiscovery.findAll(root, ShopeeScreen.VOUCHER_LIST, ShopeeElement.VOUCHER_LIST_ITEM)
         if (items.isEmpty()) return null
 
@@ -539,7 +543,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * retries, rather than falsely claiming the code applied. (Setting the text alone
      * never adds the voucher to the list: the code was previously never submitted.)
      */
-    private fun applyManualCode(root: AccessibilityNodeInfo, code: String): String? {
+    private suspend fun applyManualCode(root: AccessibilityNodeInfo, code: String): String? {
         val inputNode = traverseForInput(root) ?: return null
         safePerformAction(inputNode, AccessibilityNodeInfo.ACTION_FOCUS)
         val args = android.os.Bundle().apply {
@@ -611,7 +615,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
 
     // ─── CheckoutSniper: Place Order ─────────────────────────────────────────
 
-    private fun performPlaceOrder(): PlaceOrderResult {
+    private suspend fun performPlaceOrder(): PlaceOrderResult {
         val root = rootInActiveWindow ?: return PlaceOrderResult.AccessibilityUnavailable
 
         val match = ShopeeUIDiscovery.findMatch(
@@ -650,7 +654,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * than a fixed wait. Parsing is quiet (log=false) to avoid flooding the Debug
      * Log with one line per poll; the resolved result is logged once.
      */
-    private fun waitForOrderResult(
+    private suspend fun waitForOrderResult(
         timeoutMs: Long = ORDER_RESULT_TIMEOUT_MS,
         stepMs: Long = POLL_STEP_MS
     ): PlaceOrderResult {
@@ -666,7 +670,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
                 }
                 last = r
             }
-            android.os.SystemClock.sleep(stepMs)
+            delay(stepMs)
         }
         KitLogger.d("SNIPE", "order-result poll timed out → Unknown")
         return last
@@ -680,7 +684,9 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * Off-centre, variable-duration taps avoid the pixel-perfect, fixed-length
      * signature that a server-side risk model can flag (see [HumanBehavior]).
      */
-    private fun humanTap(node: AccessibilityNodeInfo): Boolean {
+    private enum class GestureOutcome { COMPLETED, CANCELLED, NOT_DISPATCHED }
+
+    private suspend fun humanTap(node: AccessibilityNodeInfo): Boolean {
         // Re-sync the node before reading its bounds: it may have been resolved a few
         // poll cycles ago and Shopee's RN tree can have re-rendered since, leaving the
         // cached bounds stale. refresh() returns false if the node is gone.
@@ -696,36 +702,40 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, HumanBehavior.tapDurationMs()))
             .build()
-        // dispatchGesture is ASYNC: it returns before the stroke lands. Block this
-        // (non-main) worker thread until the gesture completes, so callers never
-        // race ahead of the tap — that race made the engine declare the voucher
-        // "applied" ~40ms before the "Đồng ý" tap even finished, so the confirm
-        // never took and the drawer stayed open.
-        val latch = java.util.concurrent.CountDownLatch(1)
-        var completed = false
-        var cancelled = false
-        val cb = object : GestureResultCallback() {
-            override fun onCompleted(d: GestureDescription?) { completed = true; latch.countDown() }
-            override fun onCancelled(d: GestureDescription?) { cancelled = true; latch.countDown() }
+        // dispatchGesture is ASYNC: it returns before the stroke lands. SUSPEND (not
+        // block) this coroutine until the gesture completes, so callers never race
+        // ahead of the tap — that race made the engine declare the voucher "applied"
+        // ~40ms before the "Đồng ý" tap even finished, so the confirm never took and
+        // the drawer stayed open. Suspending also lets disarm() cancel us mid-tap.
+        // withTimeoutOrNull(700) preserves the old 700ms wait ceiling.
+        val outcome = withTimeoutOrNull(700L) {
+            suspendCancellableCoroutine { cont ->
+                val cb = object : GestureResultCallback() {
+                    override fun onCompleted(d: GestureDescription?) {
+                        if (cont.isActive) cont.resume(GestureOutcome.COMPLETED)
+                    }
+                    override fun onCancelled(d: GestureDescription?) {
+                        if (cont.isActive) cont.resume(GestureOutcome.CANCELLED)
+                    }
+                }
+                val dispatched = dispatchGesture(gesture, cb, null)
+                if (!dispatched && cont.isActive) cont.resume(GestureOutcome.NOT_DISPATCHED)
+            }
         }
-        val dispatched = dispatchGesture(gesture, cb, null)
-        if (!dispatched) {
-            KitLogger.w("TAP", "dispatch refused → ACTION_CLICK fallback")
-            return safePerformAction(node, AccessibilityNodeInfo.ACTION_CLICK)
-        }
-        val signalled = try {
-            latch.await(700, java.util.concurrent.TimeUnit.MILLISECONDS)
-        } catch (_: InterruptedException) { false }
-        KitLogger.d("TAP", "@(${x.toInt()},${y.toInt()}) box=[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}] done=$completed cancelled=$cancelled")
-        // Fall back to ACTION_CLICK ONLY when the gesture was genuinely CANCELLED
-        // (never landed). On a latch timeout with no callback the stroke was already
-        // dispatched and almost certainly landed — a fallback tap here would DOUBLE-tap,
-        // which on the place-order button means a duplicate order. Trust the dispatch.
-        return when {
-            completed -> true
-            cancelled -> safePerformAction(node, AccessibilityNodeInfo.ACTION_CLICK)
-            else -> {
-                if (!signalled) KitLogger.w("TAP", "gesture callback timed out — assuming landed, no fallback tap")
+        KitLogger.d("TAP", "@(${x.toInt()},${y.toInt()}) box=[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}] outcome=$outcome")
+        // Fall back to ACTION_CLICK ONLY when the gesture was refused or genuinely
+        // CANCELLED (never landed). On a timeout (null) with no callback the stroke was
+        // already dispatched and almost certainly landed — a fallback tap here would
+        // DOUBLE-tap, which on the place-order button means a duplicate order. Trust it.
+        return when (outcome) {
+            GestureOutcome.COMPLETED -> true
+            GestureOutcome.CANCELLED -> safePerformAction(node, AccessibilityNodeInfo.ACTION_CLICK)
+            GestureOutcome.NOT_DISPATCHED -> {
+                KitLogger.w("TAP", "dispatch refused → ACTION_CLICK fallback")
+                safePerformAction(node, AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            null -> {
+                KitLogger.w("TAP", "gesture callback timed out — assuming landed, no fallback tap")
                 true
             }
         }
@@ -804,12 +814,12 @@ class ShopeeAccessibilityService : AccessibilityService() {
             UiMatch.normalize(extractAllText(root)).contains("da duoc tu dong chon")
 
     /** Poll until [isVoucherListLoaded] or [timeoutMs] elapses. Returns true if it loaded. */
-    private fun waitForVoucherListLoaded(timeoutMs: Long): Boolean {
+    private suspend fun waitForVoucherListLoaded(timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val root = rootInActiveWindow
             if (root != null && isVoucherListLoaded(root)) return true
-            android.os.SystemClock.sleep(POLL_STEP_MS)
+            delay(POLL_STEP_MS)
         }
         return false
     }
@@ -873,7 +883,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * bounds are unreliable so a gesture would miss; ACTION_CLICK is position-free.
      * Falls back to a human gesture if the node isn't clickable or the action fails.
      */
-    private fun tapPreferClick(node: AccessibilityNodeInfo): Boolean {
+    private suspend fun tapPreferClick(node: AccessibilityNodeInfo): Boolean {
         if (node.isClickable && safePerformAction(node, AccessibilityNodeInfo.ACTION_CLICK)) {
             KitLogger.d("TAP", "ACTION_CLICK ${node.viewIdResourceName?.substringAfterLast('/') ?: node.className}")
             return true
@@ -914,12 +924,12 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * E4: Scroll voucher picker list down then back to trigger RN lazy rendering.
      * Without this, items at the bottom of the list may not yet be in the a11y tree.
      */
-    private fun scrollVoucherList(root: AccessibilityNodeInfo) {
+    private suspend fun scrollVoucherList(root: AccessibilityNodeInfo) {
         val scrollable = findScrollable(root) ?: return
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
-        android.os.SystemClock.sleep(150)
+        delay(150)
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
-        android.os.SystemClock.sleep(100)
+        delay(100)
     }
 
     /**
