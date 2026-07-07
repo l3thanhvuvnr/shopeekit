@@ -27,8 +27,13 @@ import com.personal.shopeekit.features.checkout.VoucherPreference
 import com.personal.shopeekit.service.ShopeeUIDiscovery.ShopeeElement
 import com.personal.shopeekit.service.ShopeeUIDiscovery.ShopeeScreen
 import com.personal.shopeekit.ui.ShopeeCookieSyncActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Accessibility Service for ShopeeKit.
@@ -161,6 +166,12 @@ class ShopeeAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var lastSyncNotifMs: Long = 0L   // throttle: show max 1 notif per 30min
 
+    // Cookie presence, kept fresh by a background collector so the (main-thread)
+    // accessibility callback never has to block on DataStore. Starts false
+    // (assume present) so we don't nag before the first read lands.
+    @Volatile private var cookieBlank: Boolean = false
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -168,6 +179,13 @@ class ShopeeAccessibilityService : AccessibilityService() {
         ShopeeUIDiscovery.preloadCache()   // restore learned/pinned id hints
         setupOverlayWindow()
         createNotificationChannel()
+        // Track cookie presence off the main thread — read once here and keep it
+        // current, so onAccessibilityEvent never calls a blocking getCookieSync().
+        serviceScope.launch {
+            ShopeeConfig(this@ShopeeAccessibilityService).cookieFlow.collect { cookie ->
+                cookieBlank = cookie.isBlank()
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -204,6 +222,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        serviceScope.cancel()
         removeOverlayWindow()
         super.onDestroy()
     }
@@ -969,11 +988,9 @@ class ShopeeAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastSyncNotifMs < 30 * 60 * 1000L) return // throttle 30min
 
-        val config = ShopeeConfig(this)
-        val cookie = config.getCookieSync()
-        val needsSync = cookie.isBlank()
-
-        if (!needsSync) return // cookie already set, no need to bother user
+        // Read the cached flag (kept fresh by the collector in onServiceConnected)
+        // instead of a blocking DataStore read on the main thread.
+        if (!cookieBlank) return // cookie already set, no need to bother user
 
         lastSyncNotifMs = now
         Log.i(TAG, "Shopee foreground, cookie missing — showing sync notification")

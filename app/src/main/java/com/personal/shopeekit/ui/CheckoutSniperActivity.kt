@@ -19,6 +19,7 @@ import com.personal.shopeekit.features.checkout.*
 import com.personal.shopeekit.service.ShopeeAccessibilityService
 import com.personal.shopeekit.service.ShopeeKitForegroundService
 import com.personal.shopeekit.ui.overlay.CheckoutOverlayView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -469,8 +470,11 @@ class CheckoutSniperActivity : AppCompatActivity() {
             .setTitle("Hết voucher")
             .setMessage("Voucher đã hết hoặc chưa available. Đặt hàng thường không có voucher?")
             .setPositiveButton("Đặt hàng") { _, _ ->
-                // Trigger place order without voucher
-                com.personal.shopeekit.service.ShopeeAccessibilityService.clickPlaceOrder()
+                // clickPlaceOrder() blocks (~1.5s: gesture latch + result poll), so run
+                // it off the main thread to avoid janking/ANR-ing the UI.
+                lifecycleScope.launch(Dispatchers.Default) {
+                    ShopeeAccessibilityService.clickPlaceOrder()
+                }
             }
             .setNegativeButton("Huỷ", null)
             .show()

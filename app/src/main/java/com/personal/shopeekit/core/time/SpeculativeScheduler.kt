@@ -34,33 +34,40 @@ class SpeculativeScheduler {
         thread = Thread {
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
 
-            // Phase 1: Coarse sleep until 50ms before target
-            val coarseDeadline = targetEpochMs - 50L
-            while (!cancelled && System.currentTimeMillis() < coarseDeadline) {
-                val remaining = coarseDeadline - System.currentTimeMillis()
-                if (remaining > 0) Thread.sleep(minOf(remaining, 10L))
-            }
-
-            if (cancelled) return@Thread
-
-            // Phase 2: Busy spin for final 50ms using nanoTime (monotonic, high-resolution)
-            // Convert target epoch ms to nanoTime offset:
-            // nanoTarget = nanoNow + (targetEpochMs - currentTimeMs) * 1_000_000
-            val nanoTarget = System.nanoTime() +
-                (targetEpochMs - System.currentTimeMillis()) * 1_000_000L
-
-            while (!cancelled && System.nanoTime() < nanoTarget) {
-                // Spin — this is intentional, keeps us on CPU for ~50ms
-                // This is the price we pay for ±2ms precision
-                // Thread.onSpinWait() is API 33+; on older devices the empty
-                // loop body is an equally valid (if un-hinted) busy-spin.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Thread.onSpinWait() // hint JIT: this is a spin loop
+            try {
+                // Phase 1: Coarse sleep until 50ms before target
+                val coarseDeadline = targetEpochMs - 50L
+                while (!cancelled && System.currentTimeMillis() < coarseDeadline) {
+                    val remaining = coarseDeadline - System.currentTimeMillis()
+                    if (remaining > 0) Thread.sleep(minOf(remaining, 10L))
                 }
-            }
 
-            if (!cancelled) {
-                onFire()
+                if (cancelled) return@Thread
+
+                // Phase 2: Busy spin for final 50ms using nanoTime (monotonic, high-resolution)
+                // Convert target epoch ms to nanoTime offset:
+                // nanoTarget = nanoNow + (targetEpochMs - currentTimeMs) * 1_000_000
+                val nanoTarget = System.nanoTime() +
+                    (targetEpochMs - System.currentTimeMillis()) * 1_000_000L
+
+                while (!cancelled && System.nanoTime() < nanoTarget) {
+                    // Spin — this is intentional, keeps us on CPU for ~50ms
+                    // This is the price we pay for ±2ms precision
+                    // Thread.onSpinWait() is API 33+; on older devices the empty
+                    // loop body is an equally valid (if un-hinted) busy-spin.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Thread.onSpinWait() // hint JIT: this is a spin loop
+                    }
+                }
+
+                if (!cancelled) {
+                    onFire()
+                }
+            } catch (_: InterruptedException) {
+                // cancel() interrupts this thread mid-sleep. An uncaught exception on
+                // ANY thread kills the process on Android, so swallow it — an
+                // interrupt only ever happens BECAUSE we were cancelled, and the fire
+                // must not run. (The coarse-sleep phase holds the interrupt window.)
             }
         }.also { it.start() }
     }

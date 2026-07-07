@@ -43,9 +43,14 @@ object CheckoutOverlayView {
         // Need SYSTEM_ALERT_WINDOW permission for overlay from non-Service context
         if (!Settings.canDrawOverlays(context)) return
 
-        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        // Use the application context: this is a process-lifetime singleton that
+        // outlives the calling Activity (the user leaves for Shopee while armed),
+        // so holding an Activity context here would leak it. TYPE_APPLICATION_OVERLAY
+        // works fine from the app context.
+        val appContext = context.applicationContext
+        windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        val inflater = LayoutInflater.from(context)
+        val inflater = LayoutInflater.from(appContext)
         overlayView = inflater.inflate(R.layout.overlay_sniper, null)
         tvCountdown = overlayView?.findViewById(R.id.tvOverlayCountdown)
         tvStatus = overlayView?.findViewById(R.id.tvOverlayStatus)
