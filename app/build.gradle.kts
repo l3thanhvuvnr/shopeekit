@@ -105,9 +105,11 @@ dependencies {
     implementation(libs.mpandroidchart)
 
     // Unit Tests
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-    testImplementation("org.json:json:20180813")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    testImplementation(libs.junit)
+    // coroutines-test version tracks the main coroutines version (was pinned to an
+    // older 1.9.0, a silent mismatch with the 1.10.x runtime).
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.org.json)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.espresso.core)
 }
