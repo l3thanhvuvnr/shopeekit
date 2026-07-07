@@ -1,11 +1,7 @@
 package com.personal.shopeekit.features.checkout
 
-import android.content.Context
 import com.personal.shopeekit.core.logging.KitLogger
-import com.personal.shopeekit.core.time.RttMeasurer
-import com.personal.shopeekit.core.time.SpeculativeScheduler
-import com.personal.shopeekit.core.time.TimeSync
-import com.personal.shopeekit.service.ShopeeAccessibilityService
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,7 +28,11 @@ import kotlin.coroutines.coroutineContext
  *  5. Before each retry: idempotency check (order already placed?)
  *  6. Stop on: SUCCESS / OUT_OF_STOCK / PAYMENT_ERROR / REQUIRES_PIN / WINDOW_END / MAX_ATTEMPTS
  */
-class CheckoutSniperEngine(private val context: Context) {
+class CheckoutSniperEngine(
+    private val driver: CheckoutUiDriver = AccessibilityCheckoutUiDriver,
+    private val clock: SniperClock = RealSniperClock(),
+    dispatcher: CoroutineDispatcher = Dispatchers.Default
+) {
 
     companion object {
         private const val WARMUP_LEAD_MS = 2_000L
@@ -48,8 +48,7 @@ class CheckoutSniperEngine(private val context: Context) {
         private const val COMMIT_MARGIN_MS = 200L
     }
 
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val scheduler = SpeculativeScheduler()
+    private val scope = CoroutineScope(dispatcher + SupervisorJob())
     private var calibrationJob: Job? = null
     private var fireJob: Job? = null
     private var warmUpJob: Job? = null
@@ -81,17 +80,15 @@ class CheckoutSniperEngine(private val context: Context) {
     }
 
     private fun cancelInternalJobs() {
-        scheduler.cancel()
+        clock.cancelSchedule()
         calibrationJob?.cancel()
         fireJob?.cancel()
         warmUpJob?.cancel()
     }
 
     private suspend fun calibrateAndSchedule(config: CheckoutConfig) {
-        // F3: ensure fresh calibration immediately before scheduling
-        TimeSync.ensureFresh()
-        val serverOffset = TimeSync.calibrate()
-        val rtt = RttMeasurer.measure()
+        val serverOffset = clock.calibrate()
+        val rtt = clock.measureRtt()
         val jitter = HumanBehavior.leadJitterMs()
 
         // The snipe is gated on SERVER time inside the fire loop: open the voucher
@@ -101,7 +98,7 @@ class CheckoutSniperEngine(private val context: Context) {
         // still can't open the drawer before the voucher unlocks. (The old "fire at
         // T − networkLead" is correct for landing ONE request at T, but wrong for a UI
         // interaction that needs Shopee's server state to have already flipped.)
-        val clockErrMs = if (TimeSync.isRefined) 60L else 500L
+        val clockErrMs = if (clock.isRefined) 60L else 500L
         val commitMargin = if (config.mode == SnipeMode.FULL_CHECKOUT) COMMIT_MARGIN_MS + clockErrMs else 0L
 
         val localReleaseMs = config.releaseTimeMs - serverOffset
@@ -114,28 +111,28 @@ class CheckoutSniperEngine(private val context: Context) {
             serverOffsetMs = serverOffset
         )
 
-        KitLogger.i("ENG", "calibrated — offset=${serverOffset}ms RTT=${rtt}ms clock=${if (TimeSync.isRefined) "refined±${clockErrMs}" else "coarse±${clockErrMs}"}ms commitMargin=${commitMargin}ms fireAt=$fireAtLocal jitter=$jitter")
+        KitLogger.i("ENG", "calibrated — offset=${serverOffset}ms RTT=${rtt}ms clock=${if (clock.isRefined) "refined±${clockErrMs}" else "coarse±${clockErrMs}"}ms commitMargin=${commitMargin}ms fireAt=$fireAtLocal jitter=$jitter")
 
         warmUpJob = scope.launch { runWarmUp(fireAtLocal) }
 
-        scheduler.scheduleAt(fireAtLocal) {
+        clock.scheduleAt(fireAtLocal) {
             fireJob = scope.launch { executeFireLoop(config) }
         }
     }
 
     private suspend fun runWarmUp(fireAtLocal: Long) {
-        while (System.currentTimeMillis() < fireAtLocal - WARMUP_LEAD_MS) {
+        while (clock.nowMs() < fireAtLocal - WARMUP_LEAD_MS) {
             delay(200L)
         }
-        while (System.currentTimeMillis() < fireAtLocal - 200L) {
-            ShopeeAccessibilityService.warmUpNudge()
+        while (clock.nowMs() < fireAtLocal - 200L) {
+            driver.warmUpNudge()
             delay(WARMUP_STEP_MS + HumanBehavior.leadJitterMs() * 4)
         }
     }
 
     private suspend fun executeFireLoop(config: CheckoutConfig) {
         // E5: screen guard — bail if not on checkout screen before first tap
-        if (!ShopeeAccessibilityService.isOnCheckoutScreen()) {
+        if (!driver.isOnCheckoutScreen()) {
             KitLogger.w("ENG", "ABORT — not on checkout screen, disarming")
             _state.value = CheckoutSniperState.Failed(
                 reason = "Không ở màn thanh toán — hãy mở Shopee về trang checkout trước",
@@ -157,24 +154,24 @@ class CheckoutSniperEngine(private val context: Context) {
         // never ours. Only a confirmation that appears AFTER we start counts, so record
         // the pre-existing state and disable the shortcut when it's already set.
         val orderPresentAtStart = config.mode == SnipeMode.FULL_CHECKOUT &&
-            ShopeeAccessibilityService.hasRecentOrder()
+            driver.hasRecentOrder()
         if (orderPresentAtStart) {
             KitLogger.w("ENG", "order confirmation already on screen at fire start — idempotency shortcut disabled to avoid false success")
         }
 
-        KitLogger.i("ENG", "fire — nowServer=${TimeSync.serverTimeMs()} T=${config.releaseTimeMs} window=until T+${config.retryTimeoutMs}ms clock=${if (TimeSync.isRefined) "refined" else "coarse"}")
+        KitLogger.i("ENG", "fire — nowServer=${clock.serverNowMs()} T=${config.releaseTimeMs} window=until T+${config.retryTimeoutMs}ms clock=${if (clock.isRefined) "refined" else "coarse"}")
 
-        while (TimeSync.serverTimeMs() < windowEndServer && attempt < MAX_ATTEMPTS) {
+        while (clock.serverNowMs() < windowEndServer && attempt < MAX_ATTEMPTS) {
             attempt++
-            val attemptMs = System.currentTimeMillis()
-            val rel = TimeSync.serverTimeMs() - config.releaseTimeMs
+            val attemptMs = clock.nowMs()
+            val rel = clock.serverNowMs() - config.releaseTimeMs
             KitLogger.d("ENG", "attempt #$attempt / $MAX_ATTEMPTS mode=${config.mode} T${if (rel >= 0) "+" else ""}${rel}ms")
 
             // E1: IDEMPOTENCY CHECK — detect order already placed before attempting.
             // Only meaningful when we actually place orders; in the 2-step rehearsal
             // we never order, so a leftover confirmation must not read as our success.
             if (config.mode == SnipeMode.FULL_CHECKOUT && !orderPresentAtStart &&
-                ShopeeAccessibilityService.hasRecentOrder()
+                driver.hasRecentOrder()
             ) {
                 _state.value = CheckoutSniperState.Success(
                     latencyMs = latencyFromReleaseMs(config),
@@ -192,7 +189,7 @@ class CheckoutSniperEngine(private val context: Context) {
             // voucher is time-gated and only applies at the release instant).
             _state.value = CheckoutSniperState.ApplyingVoucher
             val requireApplied = config.mode == SnipeMode.FULL_CHECKOUT
-            val voucher = ShopeeAccessibilityService.applyBestVoucher(config.voucherPreference, requireApplied)
+            val voucher = driver.applyBestVoucher(config.voucherPreference, requireApplied)
 
             // Service down is fatal — retrying can't help.
             if (voucher is VoucherApplyResult.AccessibilityUnavailable) {
@@ -211,7 +208,7 @@ class CheckoutSniperEngine(private val context: Context) {
                 KitLogger.w("ENG", "voucher apply not complete: ${voucher::class.simpleName} — retry in ${retryMs}ms")
                 _state.value = CheckoutSniperState.RetryLoop(
                     attemptCount = attempt,
-                    nextRetryMs = System.currentTimeMillis() + retryMs,
+                    nextRetryMs = clock.nowMs() + retryMs,
                     lastError = voucherFailReason(voucher)
                 )
                 delay(retryMs)
@@ -237,14 +234,14 @@ class CheckoutSniperEngine(private val context: Context) {
             // before unlock, so AutoBest may hold a stale/lesser voucher — hold to
             // T + margin, then loop to RE-APPLY (reopen the drawer) so AutoBest
             // re-selects the now-live best voucher. This pre-release apply is never ordered.
-            val nowServer = TimeSync.serverTimeMs()
+            val nowServer = clock.serverNowMs()
             val commitAtServer = config.releaseTimeMs + COMMIT_MARGIN_MS
             if (nowServer < commitAtServer) {
                 val holdMs = (commitAtServer - nowServer).coerceIn(0L, config.retryTimeoutMs)
                 KitLogger.i("ENG", "pre-release apply (T${nowServer - config.releaseTimeMs}ms) — hold ${holdMs}ms & re-apply; NOT ordering yet")
                 _state.value = CheckoutSniperState.RetryLoop(
                     attemptCount = attempt,
-                    nextRetryMs = System.currentTimeMillis() + holdMs,
+                    nextRetryMs = clock.nowMs() + holdMs,
                     lastError = "Chờ tới giờ mở voucher..."
                 )
                 delay(holdMs)
@@ -257,12 +254,12 @@ class CheckoutSniperEngine(private val context: Context) {
             // voucher drawer, navigation). Re-verify we're still on checkout right
             // before the irreversible tap — the entry guard alone doesn't cover later
             // attempts, and clickPlaceOrder would otherwise fire on an unexpected screen.
-            if (!ShopeeAccessibilityService.isOnCheckoutScreen()) {
+            if (!driver.isOnCheckoutScreen()) {
                 val retryMs = HumanBehavior.retryDelayMs()
                 KitLogger.w("ENG", "left checkout screen before place-order — retry in ${retryMs}ms")
                 _state.value = CheckoutSniperState.RetryLoop(
                     attemptCount = attempt,
-                    nextRetryMs = System.currentTimeMillis() + retryMs,
+                    nextRetryMs = clock.nowMs() + retryMs,
                     lastError = "Không còn ở màn thanh toán, thử lại..."
                 )
                 delay(retryMs)
@@ -276,7 +273,7 @@ class CheckoutSniperEngine(private val context: Context) {
 
             // ── 3-step live run: place the real order ──
             _state.value = CheckoutSniperState.PlacingOrder
-            val result = ShopeeAccessibilityService.clickPlaceOrder()
+            val result = driver.clickPlaceOrder()
 
             when (result) {
                 is PlaceOrderResult.Success -> {
@@ -300,7 +297,7 @@ class CheckoutSniperEngine(private val context: Context) {
                     val retryMs = HumanBehavior.retryDelayMs()
                     _state.value = CheckoutSniperState.RetryLoop(
                         attemptCount = attempt,
-                        nextRetryMs = System.currentTimeMillis() + retryMs,
+                        nextRetryMs = clock.nowMs() + retryMs,
                         lastError = "Voucher chưa hợp lệ, thử lại..."
                     )
                     delay(retryMs)
@@ -308,13 +305,13 @@ class CheckoutSniperEngine(private val context: Context) {
                 }
 
                 is PlaceOrderResult.OutOfStock -> {
-                    _state.value = CheckoutSniperState.OutOfStock(System.currentTimeMillis())
+                    _state.value = CheckoutSniperState.OutOfStock(clock.nowMs())
                     return
                 }
 
                 is PlaceOrderResult.VoucherExhausted -> {
                     KitLogger.w("ENG", "STOP — voucher exhausted / hết lượt")
-                    _state.value = CheckoutSniperState.VoucherExhausted(System.currentTimeMillis())
+                    _state.value = CheckoutSniperState.VoucherExhausted(clock.nowMs())
                     return
                 }
 
@@ -355,9 +352,9 @@ class CheckoutSniperEngine(private val context: Context) {
                     // miss → wrong retry → double order), and shaves the happy path.
                     // NOTE: the loop MUST re-read the clock (POST_TAP_CHECK_MS is the
                     // ceiling before ANY retry — the anti-double-order guard is preserved).
-                    val postTapDeadline = System.currentTimeMillis() + POST_TAP_CHECK_MS
-                    while (System.currentTimeMillis() < postTapDeadline) {
-                        if (ShopeeAccessibilityService.hasRecentOrder()) {
+                    val postTapDeadline = clock.nowMs() + POST_TAP_CHECK_MS
+                    while (clock.nowMs() < postTapDeadline) {
+                        if (driver.hasRecentOrder()) {
                             _state.value = CheckoutSniperState.Success(
                                 latencyMs = latencyFromReleaseMs(config),
                                 appliedVoucher = appliedVoucher,
@@ -371,7 +368,7 @@ class CheckoutSniperEngine(private val context: Context) {
                     val retryMs = HumanBehavior.retryDelayMs()
                     _state.value = CheckoutSniperState.RetryLoop(
                         attemptCount = attempt,
-                        nextRetryMs = System.currentTimeMillis() + retryMs,
+                        nextRetryMs = clock.nowMs() + retryMs,
                         lastError = result.message
                     )
                     delay(retryMs)
@@ -397,19 +394,19 @@ class CheckoutSniperEngine(private val context: Context) {
 
     fun msUntilRelease(): Long {
         return when (val s = _state.value) {
-            is CheckoutSniperState.Armed -> s.config.releaseTimeMs - TimeSync.serverTimeMs()
+            is CheckoutSniperState.Armed -> s.config.releaseTimeMs - clock.serverNowMs()
             else -> -1L
         }
     }
 
     /**
      * Latency of an event vs the release instant T, measured on Shopee's clock.
-     * Must use [TimeSync.serverTimeMs] (not the local clock): releaseTimeMs is a
+     * Must use [SniperClock.serverNowMs] (not the local clock): releaseTimeMs is a
      * server-epoch instant, so subtracting the raw device time would be off by the
      * whole serverOffset (which can be hundreds of ms on a skewed clock).
      */
     private fun latencyFromReleaseMs(config: CheckoutConfig): Long =
-        TimeSync.serverTimeMs() - config.releaseTimeMs
+        clock.serverNowMs() - config.releaseTimeMs
 
     /** Human-facing reason for a non-fatal voucher-apply miss, shown during retries. */
     private fun voucherFailReason(result: VoucherApplyResult): String = when (result) {

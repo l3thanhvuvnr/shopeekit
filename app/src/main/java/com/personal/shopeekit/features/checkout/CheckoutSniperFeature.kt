@@ -14,7 +14,7 @@ class CheckoutSniperFeature : KitFeature {
         private set
 
     override fun initialize(context: Context) {
-        engine = CheckoutSniperEngine(context)
+        engine = CheckoutSniperEngine()
     }
 
     override fun release() {
