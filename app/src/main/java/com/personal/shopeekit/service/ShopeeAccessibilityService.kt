@@ -400,8 +400,8 @@ class ShopeeAccessibilityService : AccessibilityService() {
             val postRoot = rootInActiveWindow
             if (postRoot != null) {
                 lastState = platformVoucherRowState(postRoot)
-                lastSelectedId = hasNodeWithIdSuffix(postRoot, "viewPlatformVoucherSelected")
-                parsed = VoucherApplyParser.parse(extractAllText(postRoot))
+                lastSelectedId = A11yTreeUtils.hasNodeWithIdSuffix(postRoot, "viewPlatformVoucherSelected")
+                parsed = VoucherApplyParser.parse(A11yTreeUtils.allText(postRoot))
                 if (lastState == VoucherRowState.APPLIED || lastSelectedId || parsed.applied) {
                     applied = true
                     break
@@ -663,7 +663,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
         while (System.currentTimeMillis() < deadline) {
             val root = rootInActiveWindow
             if (root != null) {
-                val r = OrderResultParser.parse(extractAllText(root), log = false)
+                val r = OrderResultParser.parse(A11yTreeUtils.allText(root), log = false)
                 if (r !is PlaceOrderResult.Unknown) {
                     KitLogger.i("SNIPE", "order result: ${r::class.simpleName} after ${System.currentTimeMillis() - (deadline - timeoutMs)}ms")
                     return r
@@ -754,56 +754,15 @@ class ShopeeAccessibilityService : AccessibilityService() {
             false
         }
 
-    private fun extractAllText(node: AccessibilityNodeInfo): String {
-        val sb = StringBuilder()
-        if (node.text != null) sb.append(node.text).append(" ")
-        if (node.contentDescription != null) sb.append(node.contentDescription).append(" ")
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            sb.append(extractAllText(child))
-        }
-        return sb.toString()
-    }
-
-    /** True if any node in the subtree carries a resource-id ending in [suffix]. */
-    private fun hasNodeWithIdSuffix(node: AccessibilityNodeInfo, suffix: String): Boolean {
-        if (node.viewIdResourceName?.substringAfterLast('/') == suffix) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (hasNodeWithIdSuffix(child, suffix)) return true
-        }
-        return false
-    }
-
-    /** First node in the subtree whose resource-id ends in [suffix], or null. */
-    private fun findNodeByIdSuffix(node: AccessibilityNodeInfo, suffix: String): AccessibilityNodeInfo? {
-        if (node.viewIdResourceName?.substringAfterLast('/') == suffix) return node
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            findNodeByIdSuffix(child, suffix)?.let { return it }
-        }
-        return null
-    }
-
-    /** True if any node in the subtree carries a resource-id whose short name starts with [prefix]. */
-    private fun hasNodeWithIdPrefix(node: AccessibilityNodeInfo, prefix: String): Boolean {
-        if (node.viewIdResourceName?.substringAfterLast('/')?.startsWith(prefix) == true) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (hasNodeWithIdPrefix(child, prefix)) return true
-        }
-        return false
-    }
-
     /**
      * True once the voucher drawer's LIST has rendered (not just its "Đồng ý" button):
      * a voucher card / radio is present, or Shopee's auto-selected summary. This is the
      * "safe to confirm" signal — confirming before it would apply an empty selection.
      */
     private fun isVoucherListLoaded(root: AccessibilityNodeInfo): Boolean =
-        hasNodeWithIdPrefix(root, "sectionVoucherCard_") ||
-            hasNodeWithIdPrefix(root, "radioBtnVoucher_") ||
-            hasNodeWithIdSuffix(root, "viewPlatformVoucherSelected") ||
+        A11yTreeUtils.hasNodeWithIdPrefix(root, "sectionVoucherCard_") ||
+            A11yTreeUtils.hasNodeWithIdPrefix(root, "radioBtnVoucher_") ||
+            A11yTreeUtils.hasNodeWithIdSuffix(root, "viewPlatformVoucherSelected") ||
             // id-free fallback so this early-exits instead of dead-waiting the full
             // ceiling when the card/radio ids shifted across a Shopee version. The
             // auto-select SUMMARY ("1 voucher đã được tự động chọn cho bạn") renders
@@ -811,7 +770,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
             // a specific drawer-only phrase, so it won't false-positive on the checkout
             // mounted behind the drawer (bare "tự động chọn" chrome would, so match the
             // full "đã được tự động chọn").
-            UiMatch.normalize(extractAllText(root)).contains("da duoc tu dong chon")
+            UiMatch.normalize(A11yTreeUtils.allText(root)).contains("da duoc tu dong chon")
 
     /** Poll until [isVoucherListLoaded] or [timeoutMs] elapses. Returns true if it loaded. */
     private suspend fun waitForVoucherListLoaded(timeoutMs: Long): Boolean {
@@ -839,7 +798,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * but the verify never saw the value → NothingApplied → the order was never placed.
      */
     private fun findPlatformVoucherRow(root: AccessibilityNodeInfo): AccessibilityNodeInfo? =
-        findNodeByIdSuffix(root, "buttonCartPageUseVoucher")
+        A11yTreeUtils.findNodeByIdSuffix(root, "buttonCartPageUseVoucher")
             ?: ShopeeUIDiscovery.find(
                 root, ShopeeScreen.CHECKOUT, ShopeeElement.VOUCHER_PICKER_ROW,
                 requireClickable = false, log = false
@@ -859,7 +818,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
     private fun platformVoucherRowState(root: AccessibilityNodeInfo?): VoucherRowState {
         root ?: return VoucherRowState.ABSENT
         val row = findPlatformVoucherRow(root) ?: return VoucherRowState.ABSENT
-        val raw = extractAllText(row).trim()
+        val raw = A11yTreeUtils.allText(row).trim()
         if (raw.isBlank()) return VoucherRowState.ABSENT   // present but not yet rendered
         if (UiMatch.normalize(raw).contains("chon hoac nhap ma")) return VoucherRowState.PLACEHOLDER
         // Strip the "Shopee Voucher" row label; anything left is the applied value.
@@ -870,7 +829,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
     private fun platformVoucherRowValue(root: AccessibilityNodeInfo?): String? {
         root ?: return null
         val row = findPlatformVoucherRow(root) ?: return null
-        val raw = extractAllText(row).trim()
+        val raw = A11yTreeUtils.allText(row).trim()
         if (raw.isBlank()) return null
         if (UiMatch.normalize(raw).contains("chon hoac nhap ma")) return null   // empty placeholder
         val value = raw.replace(Regex("(?i)shopee\\s*voucher"), "").trim()
@@ -899,7 +858,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      */
     private fun detectRecentOrderCreated(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val text = extractAllText(root).lowercase()
+        val text = A11yTreeUtils.allText(root).lowercase()
 
         return text.contains("đặt hàng thành công") ||
             text.contains("order placed successfully") ||
@@ -912,7 +871,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
     // E5: check current screen has checkout signals (before firing)
     private fun detectCheckoutScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val text = extractAllText(root).lowercase()
+        val text = A11yTreeUtils.allText(root).lowercase()
         // Must have place-order button text OR order total visible
         return text.contains("đặt hàng") || text.contains("place order") ||
             text.contains("tổng thanh toán") || text.contains("total payment")
@@ -925,7 +884,7 @@ class ShopeeAccessibilityService : AccessibilityService() {
      * Without this, items at the bottom of the list may not yet be in the a11y tree.
      */
     private suspend fun scrollVoucherList(root: AccessibilityNodeInfo) {
-        val scrollable = findScrollable(root) ?: return
+        val scrollable = A11yTreeUtils.findScrollable(root) ?: return
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
         delay(150)
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
@@ -940,19 +899,10 @@ class ShopeeAccessibilityService : AccessibilityService() {
      */
     private fun performWarmUpNudge() {
         val root = rootInActiveWindow ?: return
-        val scrollable = findScrollable(root) ?: return
+        val scrollable = A11yTreeUtils.findScrollable(root) ?: return
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id)
         android.os.SystemClock.sleep(HumanBehavior.tapDurationMs())
         safePerformAction(scrollable, AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id)
-    }
-
-    private fun findScrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isScrollable) return node
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            findScrollable(child)?.let { return it }
-        }
-        return null
     }
 
     /**

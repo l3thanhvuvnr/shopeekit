@@ -512,7 +512,7 @@ object ShopeeUIDiscovery {
     ) {
         if (depth > 8) return
         if (node.isClickable && node.isEnabled && depth >= 2) {
-            val subtreeText = collectSubtreeText(node)
+            val subtreeText = A11yTreeUtils.allText(node)
             val cls = node.className?.toString() ?: ""
             val isButton = cls.contains("Button", ignoreCase = true) && !cls.contains("View")
             if (!isButton && moneyPattern.containsMatchIn(subtreeText)) {
@@ -524,17 +524,6 @@ object ShopeeUIDiscovery {
             val child = node.getChild(i) ?: continue
             collectVoucherItemNodes(child, results, depth + 1)
         }
-    }
-
-    private fun collectSubtreeText(node: AccessibilityNodeInfo): String {
-        val sb = StringBuilder()
-        if (node.text != null) sb.append(node.text).append(' ')
-        if (node.contentDescription != null) sb.append(node.contentDescription).append(' ')
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            sb.append(collectSubtreeText(child))
-        }
-        return sb.toString()
     }
 
     // ─── Tree traversal helpers ──────────────────────────────────────────────
