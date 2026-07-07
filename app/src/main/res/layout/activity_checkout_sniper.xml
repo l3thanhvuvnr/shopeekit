@@ -22,7 +22,8 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:fillViewport="true">
 
         <LinearLayout
@@ -258,6 +259,69 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Snipe mode card: 2-step test vs 3-step live -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/shopee_orange"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Chế độ chạy"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="8dp" />
+
+                    <RadioGroup
+                        android:id="@+id/rgSnipeMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <RadioButton
+                            android:id="@+id/rbModeVoucherOnly"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="🧪 Test 2 bước: Voucher → Áp dụng (KHÔNG đặt hàng)"
+                            android:checked="true"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+
+                        <RadioButton
+                            android:id="@+id/rbModeFull"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="🔥 Chạy thật 3 bước: Voucher → Áp dụng → ĐẶT HÀNG"
+                            android:textSize="14sp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:id="@+id/tvModeHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="An toàn: chạy Test 2 bước trước để chắc chắn app chọn đúng voucher và bấm đúng nút. Chỉ bật 3 bước khi đã kiểm tra OK — bước ĐẶT HÀNG sẽ tạo đơn thật."
+                        android:textSize="12sp"
+                        android:textColor="@color/status_warning"
+                        android:layout_marginTop="8dp"
+                        android:lineSpacingExtra="2dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Retry timeout card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
@@ -295,7 +359,7 @@
                             android:id="@+id/tvRetryTimeout"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="2 phút"
+                            android:text="30 giây"
                             android:textSize="13sp"
                             android:textColor="@color/shopee_orange"
                             android:textStyle="bold" />
@@ -305,8 +369,8 @@
                         android:id="@+id/seekRetryTimeout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:max="19"
-                        android:progress="3"
+                        android:max="14"
+                        android:progress="0"
                         android:layout_marginBottom="4dp" />
 
                     <LinearLayout
@@ -403,29 +467,38 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Arm / Disarm buttons -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnArmCheckout"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="🎯  Sẵn sàng bắn"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:backgroundTint="@color/shopee_orange"
-                android:layout_marginBottom="8dp"
-                app:cornerRadius="12dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnDisarmCheckout"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="⛔ Huỷ"
-                android:visibility="gone"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                app:strokeColor="@color/status_failed"
-                android:textColor="@color/status_failed"
-                app:cornerRadius="12dp" />
-
         </LinearLayout>
     </ScrollView>
+
+    <!-- Fixed floating fire bar — pinned to the bottom, never scrolls off -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/surface"
+        android:elevation="12dp"
+        android:padding="16dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnArmCheckout"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="🎯  Sẵn sàng bắn"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="@color/shopee_orange"
+            app:cornerRadius="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDisarmCheckout"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="⛔ Huỷ"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            app:strokeColor="@color/status_failed"
+            android:textColor="@color/status_failed"
+            app:cornerRadius="12dp" />
+    </LinearLayout>
 </LinearLayout>

@@ -2,15 +2,21 @@
 # Usage: make <target>
 # Requires: Android SDK, adb in PATH
 
-GRADLEW     = gradlew.bat
+# Force cmd.exe as the recipe shell. Recipes below use cmd syntax
+# (@if exist, copy /Y, ( ... ) else ( ... )). Without this, GNU Make may
+# pick up sh/bash from PATH and break those blocks.
+SHELL       = cmd.exe
+.SHELLFLAGS = /C
+
+GRADLEW     = .\gradlew.bat
 ADB         = adb
 PACKAGE     = com.personal.shopeekit
 APK_DEBUG   = app\build\outputs\apk\debug\app-debug.apk
 APK_RELEASE = app\build\outputs\apk\release\app-release.apk
-APK_COPY    = C:\Users\Public\Desktop\ShopeeKit.apk
+APK_COPY    = %USERPROFILE%\Desktop\ShopeeKit.apk
 
 .PHONY: help build debug release install install-release clean logcat logcat-all \
-        devices uninstall deploy-worker restart ping-worker
+        devices uninstall deploy-worker restart ping-worker test
 
 # ─── Default ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +29,7 @@ help:
 	@echo   make install        Build debug + install on connected device/emulator
 	@echo   make install-release  Build release + install on connected device
 	@echo   make clean          Clean build artifacts
+	@echo   make test           Run JVM unit tests (:app:testDebugUnitTest)
 	@echo   make logcat         Logcat filtered for ShopeeKit
 	@echo   make logcat-all     Full logcat (verbose)
 	@echo   make devices        List connected ADB devices
@@ -74,6 +81,12 @@ release-copy: release
 clean:
 	$(GRADLEW) clean
 	@echo ✅ Build artifacts cleaned
+
+# ─── Test ─────────────────────────────────────────────────────────────────────
+
+test:
+	$(GRADLEW) :app:testDebugUnitTest
+	@echo ✅ Unit tests passed
 
 # ─── Device / Logcat ──────────────────────────────────────────────────────────
 

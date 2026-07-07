@@ -77,8 +77,8 @@ class RetryLogicTest {
     }
 
     @Test
-    fun `Config default timeout is 2 minutes`() {
-        assertEquals(120_000L, CheckoutConfig.DEFAULT_RETRY_TIMEOUT_MS)
+    fun `Config default timeout is 30 seconds`() {
+        assertEquals(30_000L, CheckoutConfig.DEFAULT_RETRY_TIMEOUT_MS)
     }
 
     // ─── Text-based result detection ─────────────────────────────────────────
@@ -111,10 +111,12 @@ class RetryLogicTest {
 
     @Test
     fun `Out of stock text is recognized`() {
-        assertTrue(isOutOfStockText("Hết hàng rồi"))
-        assertTrue(isOutOfStockText("Hết voucher rồi"))
-        assertTrue(isOutOfStockText("Sold out"))
-        assertTrue(isOutOfStockText("Out of stock"))
+        // Exercise the REAL parser (not a mirror) so this can't drift from the engine.
+        // Product OOS → OutOfStock; voucher exhaustion is now a distinct result.
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Hết hàng rồi"))
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Sold out"))
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Out of stock"))
+        assertEquals(PlaceOrderResult.VoucherExhausted, OrderResultParser.parse("Hết voucher rồi"))
     }
 
     // ─── Idempotency ──────────────────────────────────────────────────────────
@@ -152,12 +154,6 @@ class RetryLogicTest {
         return lower.contains("chưa hợp lệ") || lower.contains("chưa đến giờ") ||
             lower.contains("not yet available") || lower.contains("invalid voucher") ||
             lower.contains("voucher không hợp lệ")
-    }
-
-    private fun isOutOfStockText(text: String): Boolean {
-        val lower = text.lowercase()
-        return lower.contains("hết hàng") || lower.contains("sold out") ||
-            lower.contains("out of stock") || lower.contains("hết voucher")
     }
 
     private fun isOrderCreatedText(text: String): Boolean {

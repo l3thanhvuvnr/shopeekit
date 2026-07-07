@@ -35,6 +35,17 @@ class OrderResultParserTest {
     }
 
     @Test
+    fun `voucher exhausted is distinct from product out-of-stock`() {
+        // "hết voucher"/"hết lượt"/"đã lưu hết" = voucher all claimed (item still
+        // buyable), NOT a sold-out product. Must NOT collapse into OutOfStock.
+        assertEquals(PlaceOrderResult.VoucherExhausted, OrderResultParser.parse("Hết voucher rồi"))
+        assertEquals(PlaceOrderResult.VoucherExhausted, OrderResultParser.parse("Voucher đã hết lượt sử dụng"))
+        assertEquals(PlaceOrderResult.VoucherExhausted, OrderResultParser.parse("Đã lưu hết"))
+        // product OOS stays OutOfStock even though both mention "hết"
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Sản phẩm tạm hết hàng"))
+    }
+
+    @Test
     fun `Payment error text returns PaymentError`() {
         assertEquals(PlaceOrderResult.PaymentError, OrderResultParser.parse("Lỗi thanh toán"))
         assertEquals(PlaceOrderResult.PaymentError, OrderResultParser.parse("Payment failed"))
@@ -77,5 +88,27 @@ class OrderResultParserTest {
     fun `Case insensitive matching works`() {
         assertEquals(PlaceOrderResult.Success, OrderResultParser.parse("THÀNH CÔNG"))
         assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("HẾT HÀNG"))
+    }
+
+    @Test
+    fun `negated success is PaymentError not Success`() {
+        // Ground truth (i18n): failure strings that contain "thành công" must not
+        // be read as a placed order. label_pay_in_advance_error_toast etc.
+        assertEquals(
+            PlaceOrderResult.PaymentError,
+            OrderResultParser.parse("Thanh toán chưa thành công. Vui lòng thử cách khác")
+        )
+        assertEquals(
+            PlaceOrderResult.PaymentError,
+            OrderResultParser.parse("Giao hàng không thành công")
+        )
+        assertTrue(OrderResultParser.parse("Giao dịch thất bại") is PlaceOrderResult.PaymentError)
+    }
+
+    @Test
+    fun `temporarily out of stock is detected`() {
+        // i18n: opc_item_oos = "Sản phẩm tạm hết hàng", opc_item_oos_banner
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Sản phẩm tạm hết hàng"))
+        assertEquals(PlaceOrderResult.OutOfStock, OrderResultParser.parse("Phân loại này tạm hết hàng"))
     }
 }

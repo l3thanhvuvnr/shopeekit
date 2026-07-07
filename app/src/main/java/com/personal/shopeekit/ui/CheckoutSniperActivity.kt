@@ -39,6 +39,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
     private lateinit var rbMaxCashback: RadioButton
     private lateinit var rbManualCode: RadioButton
     private lateinit var etManualCode: EditText
+    private lateinit var rgSnipeMode: RadioGroup
+    private lateinit var rbModeVoucherOnly: RadioButton
+    private lateinit var rbModeFull: RadioButton
     private lateinit var seekRetryTimeout: SeekBar
     private lateinit var tvRetryTimeout: TextView
     private lateinit var tvAccessibilityStatus: TextView
@@ -59,7 +62,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
     private val calendar = Calendar.getInstance()
     private val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
 
-    // Retry timeout steps: 30s, 60s, 90s, 120s(default), 150s, 180s, 240s, 300s, 360s, 420s, 480s, 540s, 600s
+    // Retry timeout steps (seconds), 15 entries → SeekBar max = 14. Default is
+    // index 0 = 30s (Shopee's typical late-release window). Keep the XML
+    // android:max in sync with size-1 if this list changes.
     private val timeoutSteps = listOf(30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 360, 420, 480, 540, 600)
 
     private val countdownHandler = Handler(Looper.getMainLooper())
@@ -101,6 +106,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
         rbMaxCashback = findViewById(R.id.rbMaxCashback)
         rbManualCode = findViewById(R.id.rbManualCode)
         etManualCode = findViewById(R.id.etManualCode)
+        rgSnipeMode = findViewById(R.id.rgSnipeMode)
+        rbModeVoucherOnly = findViewById(R.id.rbModeVoucherOnly)
+        rbModeFull = findViewById(R.id.rbModeFull)
         seekRetryTimeout = findViewById(R.id.seekRetryTimeout)
         tvRetryTimeout = findViewById(R.id.tvRetryTimeout)
         tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus)
@@ -112,6 +120,12 @@ class CheckoutSniperActivity : AppCompatActivity() {
         btnDisarmCheckout = findViewById(R.id.btnDisarmCheckout)
 
         tvSelectedDate.text = "Ngày: ${dateFormat.format(calendar.time)}"
+
+        // Default the order time to NOW (giờ:phút hiện tại, giây = 00) so the user
+        // only tweaks what they need. Opening at 12:13 shows 12 : 13 : 00.
+        etHour.setText(calendar.get(Calendar.HOUR_OF_DAY).toString())
+        etMinute.setText(String.format(Locale.getDefault(), "%02d", calendar.get(Calendar.MINUTE)))
+        etSecond.setText("00")
     }
 
     private fun setupListeners() {
@@ -121,9 +135,14 @@ class CheckoutSniperActivity : AppCompatActivity() {
             etManualCode.visibility = if (checkedId == R.id.rbManualCode) View.VISIBLE else View.GONE
         }
 
+        rgSnipeMode.setOnCheckedChangeListener { _, checkedId ->
+            if (checkedId == R.id.rbModeFull) confirmLiveMode()
+            updateArmButtonLabel()
+        }
+
         seekRetryTimeout.max = timeoutSteps.size - 1
-        seekRetryTimeout.progress = 3 // default 120s
-        updateTimeoutLabel(3)
+        seekRetryTimeout.progress = 0 // default 30s
+        updateTimeoutLabel(0)
         seekRetryTimeout.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
                 updateTimeoutLabel(progress)
@@ -139,6 +158,38 @@ class CheckoutSniperActivity : AppCompatActivity() {
 
         // Tap trạng thái accessibility để xem hướng dẫn chi tiết
         tvAccessibilityStatus.setOnClickListener { showSetupGuide() }
+
+        updateArmButtonLabel()
+    }
+
+    /** Selected 2-step (test) vs 3-step (live). Defaults to the safe test mode. */
+    private fun selectedMode(): SnipeMode =
+        if (rgSnipeMode.checkedRadioButtonId == R.id.rbModeFull) SnipeMode.FULL_CHECKOUT
+        else SnipeMode.VOUCHER_ONLY
+
+    /** Warn the user the moment they pick 3-step — it places a real order. */
+    private fun confirmLiveMode() {
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Chế độ đặt hàng thật")
+            .setMessage(
+                "3 bước sẽ tự động bấm ĐẶT HÀNG và tạo ĐƠN HÀNG THẬT trên Shopee.\n\n" +
+                    "Chỉ dùng khi bạn đã chạy Test 2 bước và thấy app chọn đúng voucher.\n\n" +
+                    "Tiếp tục ở chế độ 3 bước?"
+            )
+            .setPositiveButton("Tôi hiểu, dùng 3 bước", null)
+            .setNegativeButton("Quay lại Test 2 bước") { _, _ ->
+                rgSnipeMode.check(R.id.rbModeVoucherOnly)
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    /** Arm button reflects what it will actually do, so the mode is never a surprise. */
+    private fun updateArmButtonLabel() {
+        btnArmCheckout.text = if (selectedMode() == SnipeMode.FULL_CHECKOUT)
+            "🔥  Bắn thật (3 bước — đặt hàng)"
+        else
+            "🧪  Chạy test (2 bước — không đặt hàng)"
     }
 
     private fun observeState() {
@@ -155,10 +206,10 @@ class CheckoutSniperActivity : AppCompatActivity() {
     }
 
     private fun updateTimeoutLabel(progress: Int) {
-        val seconds = timeoutSteps.getOrElse(progress) { 120 }
+        val seconds = timeoutSteps.getOrElse(progress) { 30 }
         tvRetryTimeout.text = when {
-            seconds < 60 -> "$seconds giây"
-            seconds % 60 == 0 -> "${seconds / 60} phút${if (seconds == 120) " (mặc định)" else ""}"
+            seconds < 60 -> "$seconds giây${if (seconds == 30) " (mặc định)" else ""}"
+            seconds % 60 == 0 -> "${seconds / 60} phút"
             else -> "${seconds / 60} phút ${seconds % 60} giây"
         }
     }
@@ -201,12 +252,13 @@ class CheckoutSniperActivity : AppCompatActivity() {
             else -> VoucherPreference.AutoBest
         }
 
-        val timeoutSeconds = timeoutSteps.getOrElse(seekRetryTimeout.progress) { 120 }
+        val timeoutSeconds = timeoutSteps.getOrElse(seekRetryTimeout.progress) { 30 }
 
         return CheckoutConfig(
             releaseTimeMs = releaseMs,
             voucherPreference = preference,
-            retryTimeoutMs = timeoutSeconds * 1000L
+            retryTimeoutMs = timeoutSeconds * 1000L,
+            mode = selectedMode()
         )
     }
 
@@ -316,8 +368,10 @@ class CheckoutSniperActivity : AppCompatActivity() {
         runOnUiThread {
             val canArm = state is CheckoutSniperState.Idle ||
                 state is CheckoutSniperState.Success ||
+                state is CheckoutSniperState.VoucherApplied ||
                 state is CheckoutSniperState.Failed ||
-                state is CheckoutSniperState.OutOfStock
+                state is CheckoutSniperState.OutOfStock ||
+                state is CheckoutSniperState.VoucherExhausted
 
             btnArmCheckout.isEnabled = canArm
             btnDisarmCheckout.visibility = if (!canArm) View.VISIBLE else View.GONE
@@ -347,6 +401,20 @@ class CheckoutSniperActivity : AppCompatActivity() {
                     tvCheckoutStatus.setTextColor(getColor(R.color.status_firing))
                     tvCheckoutCountdown.text = "NOW!"
                 }
+                is CheckoutSniperState.VoucherApplied -> {
+                    tvCheckoutStatus.text = "🧪 ĐÃ ÁP VOUCHER (chưa đặt hàng)"
+                    tvCheckoutStatus.setTextColor(getColor(R.color.status_success))
+                    tvCheckoutCountdown.text = "✓"
+                    val detail = buildString {
+                        append("Test 2 bước OK sau ${state.attemptCount} lần thử.")
+                        state.voucherLabel?.let { append("\nVoucher: $it") }
+                        state.discountText?.let { append(" | $it") }
+                        append("\n→ Kiểm tra trên Shopee: voucher đã áp đúng chưa? Nếu OK, chọn '🔥 Chạy thật 3 bước'.")
+                    }
+                    tvCheckoutDetail.text = detail
+                    CheckoutOverlayView.hide()
+                    Toast.makeText(this, "🧪 Đã áp voucher — chưa đặt hàng (chế độ test)", Toast.LENGTH_LONG).show()
+                }
                 is CheckoutSniperState.RetryLoop -> {
                     tvCheckoutStatus.text = "🔄 THỬ LẠI #${state.attemptCount}"
                     tvCheckoutStatus.setTextColor(getColor(R.color.status_scheduled))
@@ -367,9 +435,15 @@ class CheckoutSniperActivity : AppCompatActivity() {
                     Toast.makeText(this, "✅ Đặt hàng thành công!", Toast.LENGTH_LONG).show()
                 }
                 is CheckoutSniperState.OutOfStock -> {
+                    tvCheckoutStatus.text = "😞 HẾT HÀNG"
+                    tvCheckoutStatus.setTextColor(getColor(R.color.status_failed))
+                    tvCheckoutDetail.text = "Sản phẩm đã hết hàng — không thể đặt."
+                    CheckoutOverlayView.hide()
+                }
+                is CheckoutSniperState.VoucherExhausted -> {
                     tvCheckoutStatus.text = "😞 HẾT VOUCHER"
                     tvCheckoutStatus.setTextColor(getColor(R.color.status_failed))
-                    tvCheckoutDetail.text = "Voucher đã hết. Đặt hàng không voucher?"
+                    tvCheckoutDetail.text = "Voucher đã hết lượt. Đặt hàng không voucher?"
                     CheckoutOverlayView.hide()
                     showOrderWithoutVoucherDialog()
                 }
@@ -426,7 +500,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
         btnEnableAccessibility.visibility = if (connected) View.GONE else View.VISIBLE
         btnArmCheckout.isEnabled = connected && (engine.state.value is CheckoutSniperState.Idle ||
             engine.state.value is CheckoutSniperState.Success ||
+            engine.state.value is CheckoutSniperState.VoucherApplied ||
             engine.state.value is CheckoutSniperState.Failed ||
-            engine.state.value is CheckoutSniperState.OutOfStock)
+            engine.state.value is CheckoutSniperState.OutOfStock ||
+            engine.state.value is CheckoutSniperState.VoucherExhausted)
     }
 }
