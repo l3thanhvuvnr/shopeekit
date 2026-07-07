@@ -48,12 +48,15 @@ class TokenSetupActivity : AppCompatActivity() {
     }
 
     private fun loadCurrentConfig() {
-        etCookie.setText(config.getCookieSync())
-        etUserAgent.setText(config.getUserAgentSync())
-        etBaseUrl.setText(config.getBaseUrlSync())
-
-        tvStatus.text = if (config.isConfigured()) "✅ Config đã được cấu hình"
-        else "⚠️ Chưa có config — cần setup mitmproxy"
+        // Read DataStore off the main thread (getCookieSync et al. use runBlocking).
+        lifecycleScope.launch {
+            val cookie = config.getCookie()
+            etCookie.setText(cookie)
+            etUserAgent.setText(config.getUserAgent())
+            etBaseUrl.setText(config.getBaseUrl())
+            tvStatus.text = if (cookie.isNotBlank()) "✅ Config đã được cấu hình"
+            else "⚠️ Chưa có config — cần setup mitmproxy"
+        }
     }
 
     private fun saveConfig() {

@@ -7,7 +7,6 @@ import com.personal.shopeekit.core.storage.AppDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * Multi-strategy UI element discovery for the Shopee app.
@@ -47,7 +46,7 @@ object ShopeeUIDiscovery {
         PAYMENT_PIN_PROMPT("payment_pin_prompt");
 
         companion object {
-            fun fromKey(key: String?): ShopeeElement? = values().firstOrNull { it.key == key }
+            fun fromKey(key: String?): ShopeeElement? = entries.firstOrNull { it.key == key }
         }
     }
 
@@ -595,8 +594,8 @@ object ShopeeUIDiscovery {
      */
     fun preloadCache() {
         ioScope.launch {
-            for (screen in ShopeeScreen.values()) {
-                for (element in ShopeeElement.values()) {
+            for (screen in ShopeeScreen.entries) {
+                for (element in ShopeeElement.entries) {
                     val key = idKey(screen, element)
                     val id = AppDataStore.getString(key) ?: continue
                     memCache[key] = id
@@ -606,15 +605,4 @@ object ShopeeUIDiscovery {
         }
     }
 
-    /** Clear the resource-id hint cache for an element. */
-    fun invalidateCache(screen: ShopeeScreen, element: ShopeeElement) {
-        val key = idKey(screen, element)
-        memCache.remove(key)
-        runBlocking { AppDataStore.remove(key) }
-    }
-
-    /** Nuclear reset of the id-hint cache. */
-    fun clearAllCache() {
-        memCache.clear()
-    }
 }

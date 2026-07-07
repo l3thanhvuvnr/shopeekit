@@ -9,7 +9,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -20,10 +22,9 @@ import com.personal.shopeekit.R
 import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.logging.KitLogger.Entry
 import com.personal.shopeekit.core.logging.KitLogger.Level
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -40,6 +41,7 @@ class LogViewerActivity : AppCompatActivity() {
     private val PRICE_TAGS    = setOf("PRC", "SCH", "ALT")
     private val NETWORK_TAGS  = setOf("NET", "TSY", "RTT", "HTTP")
 
+    @OptIn(FlowPreview::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_log_viewer)
@@ -77,10 +79,12 @@ class LogViewerActivity : AppCompatActivity() {
         // Load existing entries immediately
         refreshList()
 
-        // Collect new entries — always dispatch to Main before touching UI
+        // Coalesce bursts: refreshList() rebuilds from the full ring buffer, so a
+        // per-entry refresh would thrash during a snipe. sample() caps it to ~7/s,
+        // and repeatOnLifecycle stops the collection while the screen isn't visible.
         lifecycleScope.launch {
-            KitLogger.flow.collect {
-                withContext(Dispatchers.Main) { refreshList() }
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                KitLogger.flow.sample(150).collect { refreshList() }
             }
         }
     }

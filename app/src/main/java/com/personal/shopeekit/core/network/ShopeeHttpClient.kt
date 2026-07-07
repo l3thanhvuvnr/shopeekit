@@ -43,8 +43,9 @@ object ShopeeHttpClient {
         try {
             val config = com.personal.shopeekit.core.storage.ShopeeConfig(context)
             val saved = config.getBaseUrlSync()
-            // Chỉ override nếu user đã tự config — không fallback về worker
-            if (saved.isNotBlank() && saved != "https://shopee-relay.vu-lethanh.workers.dev") {
+            // Chỉ override nếu user đã tự config với một URL KHÁC base build-time
+            // (tránh coi giá trị mặc định/relay là "user override").
+            if (saved.isNotBlank() && saved.trimEnd('/') != BuildConfig.SHOPEE_BASE_URL.trimEnd('/')) {
                 baseUrl = saved.trimEnd('/')
                 Log.i(TAG, "Base URL overridden by user config: $baseUrl")
             } else {

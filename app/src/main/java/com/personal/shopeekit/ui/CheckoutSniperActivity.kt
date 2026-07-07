@@ -11,7 +11,9 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.personal.shopeekit.R
 import com.personal.shopeekit.ShopeeKitApp
@@ -87,12 +89,17 @@ class CheckoutSniperActivity : AppCompatActivity() {
         bindViews()
         setupListeners()
         observeState()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Only tick the 100ms countdown/status refresh while visible — no work in bg.
         countdownHandler.post(countdownRunnable)
     }
 
-    override fun onDestroy() {
+    override fun onStop() {
         countdownHandler.removeCallbacks(countdownRunnable)
-        super.onDestroy()
+        super.onStop()
     }
 
     private fun bindViews() {
@@ -195,7 +202,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
 
     private fun observeState() {
         lifecycleScope.launch {
-            engine.state.collectLatest { updateUI(it) }
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                engine.state.collectLatest { updateUI(it) }
+            }
         }
     }
 
