@@ -13,6 +13,9 @@ local.properties
 # Worktrees
 .worktrees/
 
+# Claude Code local scratch (session tmp, UI dumps, log copies)
+.claude/
+
 # Environment
 .env*
 
