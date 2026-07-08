@@ -45,6 +45,58 @@ class VoucherApplyFlow(private val act: CheckoutActuator) {
         // APPLIED or a still-rendering PLACEHOLDER before committing to proceed — the
         // guard against shortcutting an UNREADABLE→PLACEHOLDER (empty) transition.
         private const val VERIFY_SETTLE_MS = 500L
+
+        // Prewarm: open the drawer once BEFORE T to warm the RN component + TLS
+        // connection + JS bundle, so the real open at T renders/fetches faster.
+        // Short ceilings — this runs pre-fire and must finish well before T.
+        private const val PREWARM_OPEN_TIMEOUT_MS = 1200L
+        private const val PREWARM_CLOSE_TIMEOUT_MS = 600L
+    }
+
+    /**
+     * Open the voucher drawer once and dismiss it, WITHOUT confirming — a warm-up so
+     * the real open at the release instant reuses a warm RN component, TLS
+     * connection, and loaded bundle. Runs only pre-T, from the engine's warm-up
+     * window. Best-effort: any failure is a no-op and the fire path is unaffected.
+     *
+     * HARD SAFETY: never taps "Đồng ý"/place-order — dismiss is the system Back
+     * action, so nothing is confirmed or applied. Pre-T the drawer list is empty /
+     * not-live, so there is nothing to select; the checkout row stays on its
+     * "Chọn hoặc nhập mã" placeholder (drawer-skip unaffected).
+     */
+    suspend fun prewarm() {
+        val root = act.root ?: return
+        val row = ShopeeUIDiscovery.find(root, ShopeeScreen.CHECKOUT, ShopeeElement.VOUCHER_PICKER_ROW, log = false)
+            ?: return
+        if (ShopeeUIDiscovery.isPlaceOrderNode(row)) return   // never risk the order button
+
+        val t0 = System.currentTimeMillis()
+        act.tapPreferClick(row)
+
+        // Wait briefly for the drawer's confirm button to render — this is what warms
+        // the RN sheet + triggers the (pre-T, empty) network fetch. We do NOT tap it.
+        val drawerRoot = act.waitForElement(
+            ShopeeScreen.VOUCHER_PICKER, ShopeeElement.APPLY_VOUCHER_BUTTON,
+            timeoutMs = PREWARM_OPEN_TIMEOUT_MS
+        )
+        val opened = drawerRoot != null && ShopeeUIDiscovery.find(
+            drawerRoot, ShopeeScreen.VOUCHER_PICKER, ShopeeElement.APPLY_VOUCHER_BUTTON,
+            requireClickable = false, log = false
+        ) != null
+
+        // Dismiss via Back (never confirm), then verify the drawer actually closed so
+        // the fire loop starts from the same checkout state as an un-prewarmed run.
+        act.back()
+        val closed = act.waitForElementGone(
+            ShopeeScreen.VOUCHER_PICKER, ShopeeElement.APPLY_VOUCHER_BUTTON,
+            timeoutMs = PREWARM_CLOSE_TIMEOUT_MS
+        )
+        val ms = System.currentTimeMillis() - t0
+        if (opened && closed) {
+            KitLogger.i("SNIPE", "prewarm OK — drawer opened+dismissed in ${ms}ms (warm for T)")
+        } else {
+            KitLogger.w("SNIPE", "prewarm partial — opened=$opened closed=$closed in ${ms}ms (fire loop still recovers)")
+        }
     }
 
     /**

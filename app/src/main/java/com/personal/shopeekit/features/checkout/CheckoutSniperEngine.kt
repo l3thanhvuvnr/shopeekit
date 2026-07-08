@@ -37,6 +37,10 @@ class CheckoutSniperEngine(
     companion object {
         private const val WARMUP_LEAD_MS = 2_000L
         private const val WARMUP_STEP_MS = 350L
+        // Only pre-open the drawer if there's this much lead before T, so the
+        // prewarm (open + dismiss, ~1-1.5s) finishes comfortably before fire. An arm
+        // made closer to T than this skips prewarm and falls back to a cold open.
+        private const val PREWARM_MIN_LEAD_MS = 1_500L
         // E1: cap attempts to prevent runaway retries / double-order
         private const val MAX_ATTEMPTS = 25
         // E1: after tapping place-order, wait this long to detect success screen
@@ -123,6 +127,12 @@ class CheckoutSniperEngine(
     private suspend fun runWarmUp(fireAtLocal: Long) {
         while (clock.nowMs() < fireAtLocal - WARMUP_LEAD_MS) {
             delay(200L)
+        }
+        // One-shot drawer prewarm at the start of the warm-up window, only if there's
+        // comfortable lead so it finishes well before T. Warms the RN drawer + TLS
+        // connection so the real open at T is faster. Best-effort (never confirms).
+        if (clock.nowMs() < fireAtLocal - PREWARM_MIN_LEAD_MS) {
+            driver.prewarmDrawer()
         }
         while (clock.nowMs() < fireAtLocal - 200L) {
             driver.warmUpNudge()

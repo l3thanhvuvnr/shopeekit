@@ -65,6 +65,7 @@ class CheckoutSniperEngineTest {
             return placeResult
         }
         override fun warmUpNudge() {}
+        override suspend fun prewarmDrawer() {}
     }
 
     private fun config(mode: SnipeMode) = CheckoutConfig(
@@ -159,6 +160,7 @@ class CheckoutSniperEngineTest {
                 VoucherApplyResult.Applied("v", null)
             override suspend fun clickPlaceOrder(): PlaceOrderResult { placeCalls++; return PlaceOrderResult.Success }
             override fun warmUpNudge() {}
+            override suspend fun prewarmDrawer() {}
         }
         val engine = CheckoutSniperEngine(driver, clockPastCommit(), StandardTestDispatcher(testScheduler))
 
@@ -224,6 +226,7 @@ class CheckoutSniperEngineTest {
             }
             override suspend fun clickPlaceOrder(): PlaceOrderResult { placeCalls++; return PlaceOrderResult.Success }
             override fun warmUpNudge() {}
+            override suspend fun prewarmDrawer() {}
         }
         val engine = CheckoutSniperEngine(driver, clockPastCommit(), StandardTestDispatcher(testScheduler))
 
@@ -269,6 +272,7 @@ class CheckoutSniperEngineTest {
             }
             override suspend fun clickPlaceOrder(): PlaceOrderResult { placeCalls++; return PlaceOrderResult.Success }
             override fun warmUpNudge() {}
+            override suspend fun prewarmDrawer() {}
         }
         val engine = CheckoutSniperEngine(driver, clock, StandardTestDispatcher(testScheduler))
 

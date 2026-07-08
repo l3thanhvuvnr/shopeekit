@@ -104,6 +104,14 @@ class ShopeeAccessibilityService : AccessibilityService() {
         fun warmUpNudge() {
             instance?.actuator?.warmUpNudge()
         }
+
+        /**
+         * Pre-open the voucher drawer once before T (warm-up). No-op if the service
+         * isn't connected. Never confirms a voucher. See [VoucherApplyFlow.prewarm].
+         */
+        suspend fun prewarmDrawer() {
+            instance?.voucherFlow?.prewarm()
+        }
     }
 
     private var overlayView: android.view.View? = null

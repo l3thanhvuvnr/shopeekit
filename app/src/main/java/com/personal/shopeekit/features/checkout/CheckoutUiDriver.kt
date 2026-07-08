@@ -36,6 +36,12 @@ interface CheckoutUiDriver {
 
     /** One unit of harmless pre-fire warm-up activity (anti-fraud). */
     fun warmUpNudge()
+
+    /**
+     * Open + dismiss the voucher drawer once before T to warm it (RN component,
+     * TLS connection, bundle) so the real open at T is faster. Never confirms.
+     */
+    suspend fun prewarmDrawer()
 }
 
 /**
@@ -60,4 +66,7 @@ object AccessibilityCheckoutUiDriver : CheckoutUiDriver {
 
     override fun warmUpNudge() =
         ShopeeAccessibilityService.warmUpNudge()
+
+    override suspend fun prewarmDrawer() =
+        ShopeeAccessibilityService.prewarmDrawer()
 }

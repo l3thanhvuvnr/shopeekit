@@ -176,6 +176,9 @@ class CheckoutActuator(private val service: AccessibilityService) {
             false
         }
 
+    /** Dismiss the current sheet/page via the system Back action (no confirm). */
+    fun back(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+
     /**
      * One unit of harmless "I'm looking at the screen" activity, run repeatedly by
      * CheckoutSniperEngine in the ~2s before fire. Scrolls a scrollable node a little
