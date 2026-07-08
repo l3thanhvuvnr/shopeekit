@@ -35,12 +35,15 @@ class CheckoutSniperEngine(
 ) {
 
     companion object {
-        private const val WARMUP_LEAD_MS = 2_000L
+        // Warm-up window starts at T-3.2s so the one-shot drawer prewarm (measured
+        // ~1.65s to open+dismiss on-device) finishes with a comfortable margin before
+        // fire, instead of racing it. The scroll nudges then run to T-200ms.
+        private const val WARMUP_LEAD_MS = 3_200L
         private const val WARMUP_STEP_MS = 350L
-        // Only pre-open the drawer if there's this much lead before T, so the
-        // prewarm (open + dismiss, ~1-1.5s) finishes comfortably before fire. An arm
+        // Only pre-open the drawer if there's at least this much lead before T so the
+        // prewarm finishes well before fire (open+dismiss ~1.65s + margin). An arm
         // made closer to T than this skips prewarm and falls back to a cold open.
-        private const val PREWARM_MIN_LEAD_MS = 1_500L
+        private const val PREWARM_MIN_LEAD_MS = 2_400L
         // E1: cap attempts to prevent runaway retries / double-order
         private const val MAX_ATTEMPTS = 25
         // E1: after tapping place-order, wait this long to detect success screen
