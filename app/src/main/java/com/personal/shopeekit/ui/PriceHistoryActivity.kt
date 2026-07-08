@@ -26,6 +26,8 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.chip.ChipGroup
 import com.personal.shopeekit.R
 import com.personal.shopeekit.ShopeeKitApp
+import com.personal.shopeekit.databinding.ActivityPriceHistoryBinding
+import com.personal.shopeekit.databinding.ItemProductPriceBinding
 import com.personal.shopeekit.features.price.PriceHistoryFeature
 import com.personal.shopeekit.features.price.ShopeeSearchResult
 import com.personal.shopeekit.features.price.db.PriceRecord
@@ -44,6 +46,8 @@ class PriceHistoryActivity : AppCompatActivity() {
     private val feature by lazy {
         (application as ShopeeKitApp).features.filterIsInstance<PriceHistoryFeature>().first()
     }
+
+    private lateinit var binding: ActivityPriceHistoryBinding
 
     private lateinit var btnTabTracking: MaterialButton
     private lateinit var btnTabSearch: MaterialButton
@@ -65,10 +69,10 @@ class PriceHistoryActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_price_history)
+        binding = ActivityPriceHistoryBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         supportActionBar?.hide()
-        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
-            ?.setNavigationOnClickListener { finish() }
+        binding.toolbar.setNavigationOnClickListener { finish() }
 
         bindViews()
         setupTabs()
@@ -78,18 +82,18 @@ class PriceHistoryActivity : AppCompatActivity() {
     }
 
     private fun bindViews() {
-        btnTabTracking = findViewById(R.id.btnTabTracking)
-        btnTabSearch = findViewById(R.id.btnTabSearch)
-        panelTracking = findViewById(R.id.panelTracking)
-        panelSearch = findViewById(R.id.panelSearch)
-        containerProducts = findViewById(R.id.containerProducts)
-        tvEmptyTracking = findViewById(R.id.tvEmptyTracking)
-        etSearchQuery = findViewById(R.id.etSearchQuery)
-        btnSearch = findViewById(R.id.btnSearch)
-        btnAddByUrl = findViewById(R.id.btnAddByUrl)
-        progressSearch = findViewById(R.id.progressSearch)
-        scrollResults = findViewById(R.id.scrollResults)
-        containerSearchResults = findViewById(R.id.containerSearchResults)
+        btnTabTracking = binding.btnTabTracking
+        btnTabSearch = binding.btnTabSearch
+        panelTracking = binding.panelTracking
+        panelSearch = binding.panelSearch
+        containerProducts = binding.containerProducts
+        tvEmptyTracking = binding.tvEmptyTracking
+        etSearchQuery = binding.etSearchQuery
+        btnSearch = binding.btnSearch
+        btnAddByUrl = binding.btnAddByUrl
+        progressSearch = binding.progressSearch
+        scrollResults = binding.scrollResults
+        containerSearchResults = binding.containerSearchResults
     }
 
     private fun setupTabs() {
@@ -299,15 +303,16 @@ class PriceHistoryActivity : AppCompatActivity() {
     }
 
     private fun addProductCard(product: TrackedProduct) {
-        val card = LayoutInflater.from(this).inflate(R.layout.item_product_price, containerProducts, false)
-        card.findViewById<TextView>(R.id.tvProductName).text = product.productName
-        val chart = card.findViewById<LineChart>(R.id.lineChart)
-        val tvCurrentPrice = card.findViewById<TextView>(R.id.tvCurrentPrice)
-        val tvBestPrice = card.findViewById<TextView>(R.id.tvBestPrice)
-        val tvRecommendation = card.findViewById<TextView>(R.id.tvRecommendation)
-        val cardRecommendation = card.findViewById<MaterialCardView>(R.id.cardRecommendation)
-        val btnOptions = card.findViewById<ImageButton>(R.id.btnProductOptions)
-        val chipGroup = card.findViewById<ChipGroup>(R.id.chipGroupRange)
+        val cardBinding = ItemProductPriceBinding.inflate(layoutInflater, containerProducts, false)
+        val card = cardBinding.root
+        cardBinding.tvProductName.text = product.productName
+        val chart = cardBinding.lineChart
+        val tvCurrentPrice = cardBinding.tvCurrentPrice
+        val tvBestPrice = cardBinding.tvBestPrice
+        val tvRecommendation = cardBinding.tvRecommendation
+        val cardRecommendation = cardBinding.cardRecommendation
+        val btnOptions = cardBinding.btnProductOptions
+        val chipGroup = cardBinding.chipGroupRange
 
         PriceChartRenderer.setUp(chart)
         btnOptions.setOnClickListener { showProductOptions(product) }

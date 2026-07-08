@@ -7,26 +7,26 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.View
-import android.widget.ImageButton
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.google.android.material.card.MaterialCardView
 import com.personal.shopeekit.R
+import com.personal.shopeekit.databinding.ActivityMainBinding
 import com.personal.shopeekit.service.ShopeeAccessibilityService
 import com.personal.shopeekit.ui.setup.TokenSetupActivity
 
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* result ignored */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         setupNavigation()
         checkRequiredPermissions()
@@ -50,23 +50,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupNavigation() {
-        findViewById<MaterialCardView>(R.id.btnCheckoutSniper).setOnClickListener {
+        binding.btnCheckoutSniper.setOnClickListener {
             startActivity(Intent(this, CheckoutSniperActivity::class.java))
         }
 
-        findViewById<MaterialCardView>(R.id.btnPriceHistory).setOnClickListener {
+        binding.btnPriceHistory.setOnClickListener {
             startActivity(Intent(this, PriceHistoryActivity::class.java))
         }
 
-        findViewById<ImageButton>(R.id.btnTokenSetup).setOnClickListener {
+        binding.btnTokenSetup.setOnClickListener {
             startActivity(Intent(this, TokenSetupActivity::class.java))
         }
 
-        findViewById<View?>(R.id.btnCookieSync)?.setOnClickListener {
+        binding.btnCookieSync.setOnClickListener {
             startActivity(Intent(this, ShopeeCookieSyncActivity::class.java))
         }
 
-        findViewById<View?>(R.id.btnDebugLog)?.setOnClickListener {
+        binding.btnDebugLog.setOnClickListener {
             startActivity(Intent(this, LogViewerActivity::class.java))
         }
     }
@@ -102,9 +102,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updatePermissionStatus() {
-        val tvAccessibility = findViewById<TextView>(R.id.tvAccessibilityStatus)
-        val tvOverlay = findViewById<TextView>(R.id.tvOverlayStatus)
-        val tvBattery = findViewById<TextView>(R.id.tvBatteryStatus)
+        val tvAccessibility = binding.tvAccessibilityStatus
+        val tvOverlay = binding.tvOverlayStatus
+        val tvBattery = binding.tvBatteryStatus
 
         val accessibilityOk = ShopeeAccessibilityService.getInstance() != null
         tvAccessibility.text = if (accessibilityOk) "✅ Accessibility" else "❌ Accessibility — cần bật"

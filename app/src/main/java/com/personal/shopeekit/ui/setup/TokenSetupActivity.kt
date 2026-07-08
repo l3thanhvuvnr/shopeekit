@@ -1,14 +1,11 @@
 package com.personal.shopeekit.ui.setup
 
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.personal.shopeekit.R
 import com.personal.shopeekit.core.storage.ShopeeConfig
+import com.personal.shopeekit.databinding.ActivityTokenSetupBinding
 import kotlinx.coroutines.launch
 
 /**
@@ -25,44 +22,36 @@ import kotlinx.coroutines.launch
 class TokenSetupActivity : AppCompatActivity() {
 
     private lateinit var config: ShopeeConfig
-    private lateinit var etCookie: EditText
-    private lateinit var etUserAgent: EditText
-    private lateinit var etBaseUrl: EditText
-    private lateinit var btnSave: Button
-    private lateinit var tvStatus: TextView
+    private lateinit var binding: ActivityTokenSetupBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_token_setup)
+        binding = ActivityTokenSetupBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         config = ShopeeConfig(this)
-        etCookie = findViewById(R.id.etCookie)
-        etUserAgent = findViewById(R.id.etUserAgent)
-        etBaseUrl = findViewById(R.id.etBaseUrl)
-        btnSave = findViewById(R.id.btnSave)
-        tvStatus = findViewById(R.id.tvStatus)
 
         loadCurrentConfig()
 
-        btnSave.setOnClickListener { saveConfig() }
+        binding.btnSave.setOnClickListener { saveConfig() }
     }
 
     private fun loadCurrentConfig() {
         // Read DataStore off the main thread (getCookieSync et al. use runBlocking).
         lifecycleScope.launch {
             val cookie = config.getCookie()
-            etCookie.setText(cookie)
-            etUserAgent.setText(config.getUserAgent())
-            etBaseUrl.setText(config.getBaseUrl())
-            tvStatus.text = if (cookie.isNotBlank()) "✅ Config đã được cấu hình"
+            binding.etCookie.setText(cookie)
+            binding.etUserAgent.setText(config.getUserAgent())
+            binding.etBaseUrl.setText(config.getBaseUrl())
+            binding.tvStatus.text = if (cookie.isNotBlank()) "✅ Config đã được cấu hình"
             else "⚠️ Chưa có config — cần setup mitmproxy"
         }
     }
 
     private fun saveConfig() {
-        val cookie = etCookie.text.toString().trim()
-        val ua = etUserAgent.text.toString().trim()
-        val baseUrl = etBaseUrl.text.toString().trim()
+        val cookie = binding.etCookie.text.toString().trim()
+        val ua = binding.etUserAgent.text.toString().trim()
+        val baseUrl = binding.etBaseUrl.text.toString().trim()
 
         if (cookie.isBlank()) {
             Toast.makeText(this, "Cookie không được để trống", Toast.LENGTH_SHORT).show()
@@ -75,7 +64,7 @@ class TokenSetupActivity : AppCompatActivity() {
             if (baseUrl.isNotBlank()) config.saveBaseUrl(baseUrl)
 
             Toast.makeText(this@TokenSetupActivity, "✅ Đã lưu config", Toast.LENGTH_SHORT).show()
-            tvStatus.text = "✅ Config đã được lưu"
+            binding.tvStatus.text = "✅ Config đã được lưu"
         }
     }
 }

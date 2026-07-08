@@ -22,6 +22,7 @@ import com.personal.shopeekit.R
 import com.personal.shopeekit.core.logging.KitLogger
 import com.personal.shopeekit.core.logging.KitLogger.Entry
 import com.personal.shopeekit.core.logging.KitLogger.Level
+import com.personal.shopeekit.databinding.ActivityLogViewerBinding
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ import java.util.Locale
 
 class LogViewerActivity : AppCompatActivity() {
 
+    private lateinit var binding: ActivityLogViewerBinding
     private lateinit var recycler: RecyclerView
     private lateinit var tvCount: TextView
     private lateinit var adapter: LogAdapter
@@ -44,22 +46,21 @@ class LogViewerActivity : AppCompatActivity() {
     @OptIn(FlowPreview::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_log_viewer)
+        binding = ActivityLogViewerBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
+        setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        recycler = findViewById(R.id.recyclerLog)
-        tvCount  = findViewById(R.id.tvEntryCount)
+        recycler = binding.recyclerLog
+        tvCount  = binding.tvEntryCount
 
         adapter = LogAdapter()
         recycler.layoutManager = LinearLayoutManager(this).also { it.stackFromEnd = true }
         recycler.adapter = adapter
 
         // Filter chips
-        val chipGroup = findViewById<ChipGroup>(R.id.chipGroupFilter)
-        chipGroup.setOnCheckedChangeListener { _, checkedId ->
+        binding.chipGroupFilter.setOnCheckedChangeListener { _, checkedId ->
             filterTags = when (checkedId) {
                 R.id.chipCheckout -> CHECKOUT_TAGS
                 R.id.chipPrice    -> PRICE_TAGS
@@ -70,8 +71,8 @@ class LogViewerActivity : AppCompatActivity() {
         }
 
         // Buttons
-        findViewById<MaterialButton>(R.id.btnShare).setOnClickListener { shareLog() }
-        findViewById<MaterialButton>(R.id.btnClear).setOnClickListener {
+        binding.btnShare.setOnClickListener { shareLog() }
+        binding.btnClear.setOnClickListener {
             KitLogger.clear()
             refreshList()
         }

@@ -17,8 +17,8 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.personal.shopeekit.R
 import com.personal.shopeekit.core.storage.ShopeeConfig
+import com.personal.shopeekit.databinding.ActivityCookieSyncBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,6 +44,7 @@ class ShopeeCookieSyncActivity : AppCompatActivity() {
         private const val SHOPEE_HOME_URL = "https://shopee.vn/"
     }
 
+    private lateinit var binding: ActivityCookieSyncBinding
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var tvStatus: TextView
@@ -56,7 +57,8 @@ class ShopeeCookieSyncActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_cookie_sync)
+        binding = ActivityCookieSyncBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         supportActionBar?.hide()
 
         // Back: navigate WebView history first, then fall through to default.
@@ -71,11 +73,11 @@ class ShopeeCookieSyncActivity : AppCompatActivity() {
             }
         })
 
-        progressBar = findViewById(R.id.progressSync)
-        tvStatus    = findViewById(R.id.tvSyncStatus)
-        btnSync     = findViewById(R.id.btnManualSync)
-        btnClose    = findViewById(R.id.btnClose)
-        webView     = findViewById(R.id.webViewShopee)
+        progressBar = binding.progressSync
+        tvStatus    = binding.tvSyncStatus
+        btnSync     = binding.btnManualSync
+        btnClose    = binding.btnClose
+        webView     = binding.webViewShopee
 
         setupWebView()
 

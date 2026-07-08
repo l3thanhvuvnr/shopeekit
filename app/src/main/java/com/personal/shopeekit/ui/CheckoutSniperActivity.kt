@@ -17,6 +17,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.personal.shopeekit.R
 import com.personal.shopeekit.ShopeeKitApp
+import com.personal.shopeekit.databinding.ActivityCheckoutSniperBinding
 import com.personal.shopeekit.features.checkout.*
 import com.personal.shopeekit.service.ShopeeAccessibilityService
 import com.personal.shopeekit.service.ShopeeKitForegroundService
@@ -30,7 +31,9 @@ import java.util.concurrent.TimeUnit
 
 class CheckoutSniperActivity : AppCompatActivity() {
 
-    // Views
+    private lateinit var binding: ActivityCheckoutSniperBinding
+
+    // Views (aliased from `binding` in bindViews so the rest of the file is unchanged)
     private lateinit var etHour: EditText
     private lateinit var etMinute: EditText
     private lateinit var etSecond: EditText
@@ -81,9 +84,9 @@ class CheckoutSniperActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_checkout_sniper)
-        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
-            ?.setNavigationOnClickListener { finish() }
+        binding = ActivityCheckoutSniperBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.toolbar.setNavigationOnClickListener { finish() }
         // title hardcoded trong XML toolbar — không cần supportActionBar
 
         bindViews()
@@ -103,29 +106,29 @@ class CheckoutSniperActivity : AppCompatActivity() {
     }
 
     private fun bindViews() {
-        etHour = findViewById(R.id.etHour)
-        etMinute = findViewById(R.id.etMinute)
-        etSecond = findViewById(R.id.etSecond)
-        btnPickDate = findViewById(R.id.btnPickDate)
-        tvSelectedDate = findViewById(R.id.tvSelectedDate)
-        rgVoucherPreference = findViewById(R.id.rgVoucherPreference)
-        rbAutoBest = findViewById(R.id.rbAutoBest)
-        rbMaxDiscount = findViewById(R.id.rbMaxDiscount)
-        rbMaxCashback = findViewById(R.id.rbMaxCashback)
-        rbManualCode = findViewById(R.id.rbManualCode)
-        etManualCode = findViewById(R.id.etManualCode)
-        rgSnipeMode = findViewById(R.id.rgSnipeMode)
-        rbModeVoucherOnly = findViewById(R.id.rbModeVoucherOnly)
-        rbModeFull = findViewById(R.id.rbModeFull)
-        seekRetryTimeout = findViewById(R.id.seekRetryTimeout)
-        tvRetryTimeout = findViewById(R.id.tvRetryTimeout)
-        tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus)
-        btnEnableAccessibility = findViewById(R.id.btnEnableAccessibility)
-        tvCheckoutStatus = findViewById(R.id.tvCheckoutStatus)
-        tvCheckoutCountdown = findViewById(R.id.tvCheckoutCountdown)
-        tvCheckoutDetail = findViewById(R.id.tvCheckoutDetail)
-        btnArmCheckout = findViewById(R.id.btnArmCheckout)
-        btnDisarmCheckout = findViewById(R.id.btnDisarmCheckout)
+        etHour = binding.etHour
+        etMinute = binding.etMinute
+        etSecond = binding.etSecond
+        btnPickDate = binding.btnPickDate
+        tvSelectedDate = binding.tvSelectedDate
+        rgVoucherPreference = binding.rgVoucherPreference
+        rbAutoBest = binding.rbAutoBest
+        rbMaxDiscount = binding.rbMaxDiscount
+        rbMaxCashback = binding.rbMaxCashback
+        rbManualCode = binding.rbManualCode
+        etManualCode = binding.etManualCode
+        rgSnipeMode = binding.rgSnipeMode
+        rbModeVoucherOnly = binding.rbModeVoucherOnly
+        rbModeFull = binding.rbModeFull
+        seekRetryTimeout = binding.seekRetryTimeout
+        tvRetryTimeout = binding.tvRetryTimeout
+        tvAccessibilityStatus = binding.tvAccessibilityStatus
+        btnEnableAccessibility = binding.btnEnableAccessibility
+        tvCheckoutStatus = binding.tvCheckoutStatus
+        tvCheckoutCountdown = binding.tvCheckoutCountdown
+        tvCheckoutDetail = binding.tvCheckoutDetail
+        btnArmCheckout = binding.btnArmCheckout
+        btnDisarmCheckout = binding.btnDisarmCheckout
 
         tvSelectedDate.text = "Ngày: ${dateFormat.format(calendar.time)}"
 
