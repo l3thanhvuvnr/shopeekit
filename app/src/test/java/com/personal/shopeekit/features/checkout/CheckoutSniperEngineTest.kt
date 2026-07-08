@@ -17,10 +17,11 @@ import org.junit.Test
  * These replace the old locally-mirrored `shouldRetry` helper: they exercise the
  * REAL engine deciding terminal-vs-retry, so they can't drift from it.
  *
- * Scenarios are single-pass and deterministic. The fake clock's server time is
- * fixed just past the commit gate and inside the retry window, so a terminal
- * result ends the loop on the first attempt; retry-until-window-end timing is
- * intentionally not asserted here (it depends on wall-clock advancement).
+ * Most scenarios are single-pass with the fake clock's server time fixed just past
+ * the commit gate and inside the retry window. The retry loop, the pre-release
+ * hold+re-apply, and the MAX_ATTEMPTS cap are exercised by drivers that miss or
+ * nudge the clock. Window-end by elapsed SERVER time is not asserted (it depends
+ * on real wall-clock advancement, which the fixed fake clock doesn't model).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CheckoutSniperEngineTest {
@@ -201,5 +202,99 @@ class CheckoutSniperEngineTest {
         assertTrue(engine.msUntilRelease() > 0)
         assertFalse(driver.applyCalls > 0)  // hasn't fired yet
         engine.disarm()
+    }
+
+    // ─── Retry / hold / idempotency branches ──────────────────────────────────
+    // (Added after an adversarial review flagged these paths as untested.)
+
+    @Test
+    fun `voucher-apply miss retries then succeeds`() = runTest {
+        // First apply doesn't complete (drawer never opened) → RetryLoop; second
+        // apply succeeds → order. Exercises the retry loop with the server-time
+        // window held open (serverNow fixed in-window).
+        val driver = object : CheckoutUiDriver {
+            var applyCalls = 0
+            var placeCalls = 0
+            override fun isOnCheckoutScreen() = true
+            override fun hasRecentOrder() = false
+            override suspend fun applyBestVoucher(preference: VoucherPreference, requireApplied: Boolean): VoucherApplyResult {
+                applyCalls++
+                return if (applyCalls == 1) VoucherApplyResult.DrawerNotOpened
+                else VoucherApplyResult.Applied("v", null)
+            }
+            override suspend fun clickPlaceOrder(): PlaceOrderResult { placeCalls++; return PlaceOrderResult.Success }
+            override fun warmUpNudge() {}
+        }
+        val engine = CheckoutSniperEngine(driver, clockPastCommit(), StandardTestDispatcher(testScheduler))
+
+        engine.arm(config(SnipeMode.FULL_CHECKOUT))
+        advanceUntilIdle()
+
+        assertTrue("expected Success, got ${engine.state.value}", engine.state.value is CheckoutSniperState.Success)
+        assertEquals("should have retried the apply once", 2, driver.applyCalls)
+        assertEquals(1, driver.placeCalls)
+    }
+
+    @Test
+    fun `persistent voucher-apply miss stops at MAX_ATTEMPTS`() = runTest {
+        // apply never completes; the window stays open (serverNow fixed) so the loop
+        // stops on the attempt cap, not the window — Failed after 25 tries.
+        val driver = FakeDriver(applyResult = VoucherApplyResult.DrawerNotOpened)
+        val engine = CheckoutSniperEngine(driver, clockPastCommit(), StandardTestDispatcher(testScheduler))
+
+        engine.arm(config(SnipeMode.FULL_CHECKOUT))
+        advanceUntilIdle()
+
+        val state = engine.state.value
+        assertTrue("expected Failed, got $state", state is CheckoutSniperState.Failed)
+        assertEquals("MAX_ATTEMPTS", 25, (state as CheckoutSniperState.Failed).attemptCount)
+        assertEquals(25, driver.applyCalls)
+    }
+
+    @Test
+    fun `pre-release apply holds then re-applies past the commit gate`() = runTest {
+        // FULL only: apply happens before T+commit → hold & re-apply (never order
+        // pre-release). Driver nudges the server clock forward per apply so the 2nd
+        // pass clears the commit gate and orders.
+        val clock = FakeClock(localNow = releaseT + 10_000L, serverNow = releaseT - 100L)
+        val driver = object : CheckoutUiDriver {
+            var applyCalls = 0
+            var placeCalls = 0
+            override fun isOnCheckoutScreen() = true
+            override fun hasRecentOrder() = false
+            override suspend fun applyBestVoucher(preference: VoucherPreference, requireApplied: Boolean): VoucherApplyResult {
+                applyCalls++
+                clock.serverNow += 200L   // advance Shopee's clock each pass
+                return VoucherApplyResult.Applied("v", null)
+            }
+            override suspend fun clickPlaceOrder(): PlaceOrderResult { placeCalls++; return PlaceOrderResult.Success }
+            override fun warmUpNudge() {}
+        }
+        val engine = CheckoutSniperEngine(driver, clock, StandardTestDispatcher(testScheduler))
+
+        engine.arm(config(SnipeMode.FULL_CHECKOUT))
+        advanceUntilIdle()
+
+        assertTrue("expected Success, got ${engine.state.value}", engine.state.value is CheckoutSniperState.Success)
+        assertTrue("must re-apply after the pre-release hold", driver.applyCalls >= 2)
+        // never ordered before clearing the gate
+        assertEquals(1, driver.placeCalls)
+    }
+
+    @Test
+    fun `FULL with a leftover order at fire start still places a real order`() = runTest {
+        // hasRecentOrder is TRUE from the start (a leftover confirmation) → the
+        // idempotency shortcut must be DISABLED so it isn't read as our success;
+        // the engine should still apply + place a real order.
+        val driver = FakeDriver(recentOrder = true, placeResult = PlaceOrderResult.Success)
+        val engine = CheckoutSniperEngine(driver, clockPastCommit(), StandardTestDispatcher(testScheduler))
+
+        engine.arm(config(SnipeMode.FULL_CHECKOUT))
+        advanceUntilIdle()
+
+        val state = engine.state.value
+        assertTrue("expected Success, got $state", state is CheckoutSniperState.Success)
+        assertFalse("must not be a false idempotency success", (state as CheckoutSniperState.Success).detectedExisting)
+        assertEquals("placed a real order", 1, driver.placeCalls)
     }
 }
